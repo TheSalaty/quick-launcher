@@ -16,8 +16,11 @@
 }
 
 .ql-back {
-  padding: 8px;
-  border-radius: 999px;
+  padding: 6px;
+}
+
+.ql-back StIcon {
+  icon-size: 16px;
 }
 
 .ql-entry {
@@ -82,6 +85,15 @@
 .ql-row-accessory {
   font-size: 9.5pt;
   font-feature-settings: "tnum";
+}
+
+.ql-row-accessory-active {
+  color: -st-accent-color;
+  font-weight: bold;
+}
+
+.ql-row:selected .ql-row-accessory-active {
+  color: inherit;
 }
 
 .ql-row-answer {

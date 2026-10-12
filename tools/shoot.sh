@@ -44,6 +44,16 @@ set_ql onepassword-unlock password
 set_ql clockify-api-key screenshot
 set_ql clockify-api-url "http://127.0.0.1:$PORT/api/v1"
 
+# Fake T3 Code: a state database and a handler for t3code:// links.
+mkdir -p "$SANDBOX/t3code" "$SANDBOX/data/applications"
+sqlite3 "$SANDBOX/t3code/statev2.sqlite" < "$HERE/fixtures/t3code.sql"
+echo screenshot-environment > "$SANDBOX/t3code/environment-id"
+printf '[Desktop Entry]\nType=Application\nName=T3 Code\nExec=true %%U\nIcon=%s\nMimeType=x-scheme-handler/t3code;\n' \
+  "$( [ -e /usr/share/icons/hicolor/512x512/apps/t3code-nightly.png ] && echo t3code-nightly || echo utilities-terminal)" \
+  > "$SANDBOX/data/applications/t3code.desktop"
+update-desktop-database "$SANDBOX/data/applications"
+set_ql t3code-data-dir "$SANDBOX/t3code"
+
 python3 -I "$HERE/fixtures/clockify.py" "$PORT" &
 SERVER_PID=$!
 gnome-shell --headless --wayland --no-x11 --virtual-monitor 2800x1800 >"$SANDBOX/shell.log" 2>&1 &
@@ -93,6 +103,15 @@ clear_query
 type_text "time in tokyo"
 sleep 0.4
 shot timezone
+clear_query
+
+type_text "search t3"
+sleep 0.4
+keys Return
+sleep 1
+shot t3code
+keys Escape
+sleep 0.3
 clear_query
 
 type_text standup

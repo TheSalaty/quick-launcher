@@ -171,6 +171,18 @@ function generalPage(settings: Gio.Settings): Adw.PreferencesPage {
     calculator.add(currency);
     page.add(calculator);
 
+    const t3 = new Adw.PreferencesGroup({
+        title: 'T3 Code',
+        description: Gio.AppInfo.get_default_for_uri_scheme('t3code') ?? Gio.AppInfo.get_all_for_type('x-scheme-handler/t3code')[0]
+            ? 'Active sessions (not settled or archived) show up in the search, with whether they are working right now'
+            : 'T3 Code doesn’t seem to be installed; sessions show up once it is',
+    });
+    t3.add(switchRow(settings, 't3code-enabled', 'Search T3 Code sessions'));
+    const dataDir = new Adw.EntryRow({title: 'Data directory (empty = ~/.t3/userdata)', show_apply_button: true});
+    settings.bind('t3code-data-dir', dataDir, 'text', Gio.SettingsBindFlags.DEFAULT);
+    t3.add(dataDir);
+    page.add(t3);
+
     const history = new Adw.PreferencesGroup();
     const clear = new Adw.ActionRow({title: 'Recently used items', subtitle: 'Shown when the launcher opens'});
     const button = new Gtk.Button({label: 'Clear', valign: Gtk.Align.CENTER});

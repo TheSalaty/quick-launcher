@@ -42,6 +42,8 @@ export interface Item {
     subtitle?: string;
     /** Dim text on the right */
     accessory?: string;
+    /** Show the accessory in the accent color, e.g. "● Working" */
+    accessoryActive?: boolean;
     /** Logo tile on the right, e.g. the vault an item comes from */
     source?: {icon: Gio.Icon; styleClass?: string};
     /** A calculator answer: big title with the expression below */
@@ -162,7 +164,7 @@ export class Launcher {
         // Search bar
         const bar = new St.BoxLayout({style_class: 'ql-bar'});
         this.#back = new St.Button({
-            style_class: 'button ql-back',
+            style_class: 'icon-button ql-back',
             child: new St.Icon({icon_name: 'go-previous-symbolic'}),
             visible: false,
             y_align: Clutter.ActorAlign.CENTER,
@@ -513,6 +515,8 @@ export class Launcher {
         row.subtitle.visible = !!item.subtitle;
         row.accessory.text = item.accessory ?? '';
         row.accessory.visible = !!item.accessory;
+        row.accessory.opacity = item.accessoryActive ? 255 : DIM;
+        toggleClass(row.accessory, 'ql-row-accessory-active', !!item.accessoryActive);
         row.source.visible = !!item.source;
         if (item.source) {
             row.source.style_class = `ql-source ${item.source.styleClass ?? ''}`;

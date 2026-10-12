@@ -25,6 +25,7 @@ src/passwords/          Vault interface, rbw and 1Password vaults, the D-Bus pin
 src/clockify/           API client, provider, task grouping and @project/#tag parsing
 src/emoji/              emoji data (Emojibase, English + German) and search
 src/system/             lock, suspend, power and desktop toggles
+src/t3code/             active T3 Code sessions from its state database
 src/bin/pinentry.ts     the pinentry program rbw runs when the bridge is on
 tools/                  headless screenshot harness with fake rbw, op and Clockify
 test/                   unit tests
@@ -73,6 +74,24 @@ using `Intl` (available in GJS and Node), so they are covered by `test/calc.test
   and time zones. Places resolve through aliases (cities, countries, airports, abbreviations) and
   the city part of every IANA zone the runtime knows.
 - `rates.ts` fetches the ECB reference rates at most twice a day and caches them.
+
+## T3 Code
+
+T3 Code keeps its state in SQLite (`~/.t3/userdata/statev2.sqlite`). `src/t3code/t3code.ts` runs
+one query through `sqlite3 -readonly -json` (a few milliseconds on a multi-gigabyte database):
+threads from `orchestration_v2_projection_threads` that aren't deleted or archived, whose
+`settledOverride` isn't `settled` (the same rule T3 Code's sidebar uses) and that have no parent
+thread (subagents), joined with the project title and the newest unfinished run from
+`orchestration_v2_projection_runs` (`running`, `waiting`, …), whose `requested_at` is when the
+current turn started. While the launcher is open the query repeats every two seconds.
+
+The provider is only active when something handles `t3code://` links and the database exists.
+Enter launches `t3code://threads/<environment-id>/<thread-id>` with that handler; the
+environment id is in `~/.t3/userdata/environment-id`. T3 Code's desktop app turns such links into
+its `/$environmentId/$threadId` route.
+
+For screenshots, `tools/fixtures/t3code.sql` builds a small database with the same tables and a
+fake `t3code.desktop` handler goes into the sandbox.
 
 ## Vaults
 

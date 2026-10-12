@@ -1,10 +1,11 @@
 # Quick Launcher
 
-A Raycast-style launcher for GNOME Shell: your passwords, your Clockify timer, a calculator, emoji
-and system commands behind one shortcut.
+A Raycast-style launcher for GNOME Shell: your passwords, your T3 Code sessions, your Clockify
+timer, a calculator, emoji and system commands behind one shortcut.
 
 Press <kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>Enter</kbd> and start typing. One search covers
-**Bitwarden** and **1Password**, recent Clockify entries and every command, and anything that looks
+**Bitwarden** and **1Password**, active **T3 Code** sessions, recent Clockify entries and every
+command, and anything that looks
 like math, a unit conversion, a date or a time zone is answered right away.
 
 <p align="center">
@@ -18,6 +19,7 @@ like math, a unit conversion, a date or a time zone is answered right away.
 - Unlock either vault in the launcher: type the master password there, or hand over to the
   1Password app
 - Copy or type passwords, usernames and TOTP codes. Typing works on Wayland without ydotool
+- Find active T3 Code sessions, see which are working and for how long, and open them in T3 Code
 - Start and stop Clockify timers from your recent entries, or a new one with `@project` and `#tag`
 - Calculator with units, currencies, percentages, dates, calendar weeks and time zones
 - Emoji search in English and German
@@ -153,6 +155,23 @@ are the European Central Bank's daily reference rates.
   <img src="docs/timezone.png" alt="time in tokyo answered with the time, offset and difference" width="600">
 </p>
 
+### T3 Code
+
+If [T3 Code](https://t3.codes) is installed, its active sessions show up in the search: every
+thread that isn't settled, archived or a subagent's. The right side shows whether the agent is
+**working** and for how long, whether it is **waiting for you**, or when the session last changed.
+It updates live while the launcher is open. <kbd>Enter</kbd> opens the session in T3 Code,
+<kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>C</kbd> copies a link to it. *Search T3 Code Sessions* lists
+all of them, working ones first.
+
+<p align="center">
+  <img src="docs/t3code.png" alt="Active T3 Code sessions with their working status" width="600">
+</p>
+
+The sessions are read from T3 Code's state database (`~/.t3/userdata/statev2.sqlite`), read-only
+and through the `sqlite3` command, which has to be installed. Nothing is written and no T3 Code
+API is called.
+
 ### Clockify
 
 Matching recent entries show up in the search, with when you last worked on them.
@@ -184,8 +203,8 @@ gnome-extensions prefs quick-launcher@julian.falcondev.de
 
 Or run *Quick Launcher Settings* from the launcher. You can change the shortcut, turn each
 password manager on or off, set the rbw and op binaries, the 1Password account and unlock
-method, the default currency, how long copied secrets stay on the clipboard, and the Clockify API
-key. An optional second shortcut opens Clockify directly, and *Clear* empties the list of recently
+method, the default currency, whether to search T3 Code sessions (and T3 Code's data directory),
+how long copied secrets stay on the clipboard, and the Clockify API key. An optional second shortcut opens Clockify directly, and *Clear* empties the list of recently
 used items. Workspaces on a regional Clockify server
 need the matching API URL, for example `https://euc1.clockify.me/api/v1`.
 
@@ -198,6 +217,8 @@ need the matching API URL, for example `https://euc1.clockify.me/api/v1`.
 - The Bitwarden pinentry bridge changes rbw's `pinentry` setting. Turning it off restores the
   previous value. While the extension isn't running, the bridge passes prompts on to that
   pinentry.
+- T3 Code sessions are read with `sqlite3 -readonly`, every two seconds while the launcher is
+  open. Sessions are opened through `t3code://threads/<environment>/<thread>` links.
 - Clockify entries and exchange rates are cached in `~/.cache/quick-launcher/`, so they show up
   right away after a restart.
 
@@ -207,4 +228,4 @@ For development notes, see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
 [MIT](LICENSE). Emoji names come from [Emojibase](https://emojibase.dev) (MIT), the Bitwarden and
 1Password logos from [Simple Icons](https://simpleicons.org) (CC0). Quick Launcher is not
-affiliated with Bitwarden, 1Password, Clockify or Raycast.
+affiliated with Bitwarden, 1Password, T3 Code, Clockify or Raycast.

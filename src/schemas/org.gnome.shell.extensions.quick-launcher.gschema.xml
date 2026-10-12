@@ -72,6 +72,16 @@
       <summary>Currency that amounts like "100 usd" are converted to</summary>
     </key>
 
+    <!-- T3 Code -->
+    <key name="t3code-enabled" type="b">
+      <default>true</default>
+      <summary>Search active T3 Code sessions (when T3 Code is installed)</summary>
+    </key>
+    <key name="t3code-data-dir" type="s">
+      <default>''</default>
+      <summary>T3 Code data directory; empty for ~/.t3/userdata</summary>
+    </key>
+
     <!-- Clockify -->
     <key name="clockify-shortcut" type="as">
       <default><![CDATA[[]]]></default>
