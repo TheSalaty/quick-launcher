@@ -4,7 +4,7 @@
     <!-- Passwords -->
     <key name="shortcut" type="as">
       <default><![CDATA[['<Shift><Control>Return']]]></default>
-      <summary>Shortcut that opens the password launcher</summary>
+      <summary>Shortcut that opens the launcher</summary>
     </key>
     <key name="bitwarden-enabled" type="b">
       <default>true</default>
@@ -62,19 +62,20 @@
       <default>true</default>
       <summary>Press Enter after typing a password</summary>
     </key>
-    <key name="last-query" type="s">
-      <default>''</default>
-      <summary>Last password search</summary>
+
+    <key name="recent" type="as">
+      <default>[]</default>
+      <summary>Recently used items, newest first</summary>
     </key>
-    <key name="last-entry-id" type="s">
-      <default>''</default>
-      <summary>Id of the last used password item</summary>
+    <key name="default-currency" type="s">
+      <default>'EUR'</default>
+      <summary>Currency that amounts like "100 usd" are converted to</summary>
     </key>
 
     <!-- Clockify -->
     <key name="clockify-shortcut" type="as">
-      <default><![CDATA[['<Shift><Alt>Return']]]></default>
-      <summary>Shortcut that opens the Clockify launcher</summary>
+      <default><![CDATA[[]]]></default>
+      <summary>Shortcut that opens the launcher straight in Clockify (optional)</summary>
     </key>
     <key name="clockify-api-key" type="s">
       <default>''</default>
@@ -83,14 +84,6 @@
     <key name="clockify-api-url" type="s">
       <default>'https://api.clockify.me/api/v1'</default>
       <summary>Clockify API base URL (regional servers use e.g. https://euc1.clockify.me/api/v1)</summary>
-    </key>
-    <key name="clockify-last-query" type="s">
-      <default>''</default>
-      <summary>Last Clockify search</summary>
-    </key>
-    <key name="clockify-last-entry-id" type="s">
-      <default>''</default>
-      <summary>Id of the last started Clockify entry</summary>
     </key>
   </schema>
 </schemalist>

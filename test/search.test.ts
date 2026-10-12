@@ -37,3 +37,9 @@ test('exact and prefix matches beat substrings', () => {
     const index = new SearchIndex([{name: 'mygit'}, {name: 'gitea'}, {name: 'git'}], fields);
     assert.deepEqual(index.search('git').map(i => i.name), ['git', 'gitea', 'mygit']);
 });
+
+test('all: only items matching every word', () => {
+    const index = new SearchIndex([{name: 'AWS Console', user: 'infra'}, {name: 'GitHub'}], fields);
+    assert.deepEqual(index.search('2 min in year', {all: true}), []);
+    assert.deepEqual(index.search('aws in', {all: true}).map(i => i.name), ['AWS Console']);
+});

@@ -1,9 +1,10 @@
-import type Gio from 'gi://Gio';
+import Gio from 'gi://Gio';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
-import {Launcher, type Keys, type RowContent} from '../lib/launcher.ts';
-import {notifyError, osd, SecretClipboard, Timers, Typist} from '../lib/output.ts';
+import type {Action, Item, Launcher, Section, View} from '../lib/launcher.ts';
+import {notifyError, osd, SecretClipboard, Typist, type Timers} from '../lib/output.ts';
+import type {Recents} from '../lib/recents.ts';
 import {SearchIndex, type Field} from '../lib/search.ts';
 import {OnePasswordVault} from './onepassword.ts';
 import {PinentryService, type PinRequest} from './pinentry.ts';
@@ -19,15 +20,6 @@ interface VaultState {
     /** Bumped on every reload, so a slow, stale response is dropped. */
     generation: number;
 }
-
-/** Shown for a vault that is locked, unlocking or failing */
-interface VaultRow {
-    id: string;
-    vault: Vault;
-    isVaultRow: true;
-}
-
-type Entry = VaultItem | VaultRow;
 
 type What = 'password' | 'user' | 'totp' | 'login';
 
@@ -47,11 +39,8 @@ const KIND_ICONS: Record<ItemKind, string> = {
     other: 'dialog-password-symbolic',
 };
 
-const HINTS = '⏎ copy password   ⇧⏎ type   ⌃⏎ type login   Alt+U user   Alt+T TOTP   ⌃R sync   ⌃L lock';
-
-function isVaultRow(entry: Entry): entry is VaultRow {
-    return 'isVaultRow' in entry;
-}
+export const PASSWORDS_COLOR = '#3584e4';
+const RECENT_PREFIX = 'password:';
 
 function stripScheme(uri: string): string {
     return uri.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '').replace(/^www\./i, '');
@@ -67,75 +56,52 @@ function searchFields(item: VaultItem): Field[] {
     ];
 }
 
-/**
- * Actions: copy-password, type-password, copy-user, type-user, copy-totp,
- * type-totp, type-login.
- */
-function itemAction({enter, char, ctrl, shift, alt}: Keys): string | null {
-    if (enter)
-        return ctrl ? 'type-login' : shift ? 'type-password' : 'copy-password';
-    if (!alt || ctrl)
-        return null;
-
-    const verb = shift ? 'type' : 'copy';
-    const actions: Record<string, string> = {
-        p: `${verb}-password`,
-        u: `${verb}-user`,
-        t: `${verb}-totp`,
-        a: 'type-login',
-    };
-    return actions[char] ?? null;
-}
-
-/** One search over all password managers; locked ones can be unlocked in place. */
+/** Bitwarden and 1Password behind one search; locked vaults can be unlocked in place. */
 export class Passwords {
     readonly #settings: Gio.Settings;
+    readonly #launcher: Launcher;
+    readonly #recents: Recents;
     readonly #vaults: Vault[];
     readonly #states = new Map<Vault, VaultState>();
+    readonly #logos = new Map<Vault, Gio.Icon>();
     readonly #clipboard: SecretClipboard;
     readonly #typist: Typist;
-    readonly #launcher: Launcher<Entry>;
     readonly #prompter: Prompter;
     readonly #settingsIds: number[];
     #index = new SearchIndex<VaultItem>([], searchFields);
     #pinentry: PinentryService | null = null;
     #destroyed = false;
 
-    constructor(settings: Gio.Settings, timers: Timers) {
-        this.#settings = settings;
-        this.#vaults = [new RbwVault(settings), new OnePasswordVault(settings)];
-        for (const vault of this.#vaults)
-            this.#states.set(vault, {status: 'checking', error: '', items: [], generation: 0});
+    readonly view: View;
 
+    constructor(settings: Gio.Settings, timers: Timers, iconsDir: Gio.File, launcher: Launcher, recents: Recents) {
+        this.#settings = settings;
+        this.#launcher = launcher;
+        this.#recents = recents;
+        this.#vaults = [new RbwVault(settings), new OnePasswordVault(settings)];
+        for (const vault of this.#vaults) {
+            this.#logos.set(vault, new Gio.FileIcon({file: iconsDir.get_child(vault.logo)}));
+            this.#states.set(vault, {status: 'checking', error: '', items: [], generation: 0});
+        }
         this.#clipboard = new SecretClipboard(settings, timers);
         this.#typist = new Typist(settings, timers);
-        this.#launcher = new Launcher<Entry>({
-            icon: 'system-search-symbolic',
-            placeholder: 'Search passwords…',
-            hints: HINTS,
-            search: query => this.#search(query),
-            describe: entry => this.#describe(entry),
-            actionFor: (entry, keys) => isVaultRow(entry)
-                ? keys.enter ? 'unlock' : null
-                : itemAction(keys),
-            commands: {
-                r: () => void this.#sync(),
-                l: () => void this.#lockAll(),
-            },
-            onActivate: (entry, action) => isVaultRow(entry)
-                ? void this.#unlock(entry.vault)
-                : void this.#perform(entry, action),
-        });
-
         this.#prompter = {
             askSecret: (prompt, description) => this.#launcher.askSecret({prompt, description}),
             stepAside: task => this.#stepAside(task),
         };
 
+        this.view = {
+            title: 'Passwords',
+            icon: 'dialog-password-symbolic',
+            placeholder: 'Search passwords…',
+            search: query => this.#viewSections(query),
+            actions: () => this.#viewActions(),
+        };
+
         this.#settingsIds = [
             settings.connect('changed::rbw-pinentry-bridge', () => this.#updatePinentry()),
-            settings.connect('changed::bitwarden-enabled', () => this.#reloadAll()),
-            settings.connect('changed::onepassword-enabled', () => this.#reloadAll()),
+            settings.connect('changed::bitwarden-enabled', () => this.reload()),
+            settings.connect('changed::onepassword-enabled', () => this.reload()),
         ];
         this.#updatePinentry();
     }
@@ -147,7 +113,6 @@ export class Passwords {
         this.#pinentry?.destroy();
         this.#clipboard.clearNow();
         this.#typist.destroy();
-        this.#launcher.destroy();
         for (const vault of this.#vaults)
             vault.destroy();
     }
@@ -156,62 +121,104 @@ export class Passwords {
         return this.#vaults.filter(v => v.enabled);
     }
 
-    toggle() {
-        if (this.#launcher.isOpen) {
-            this.#launcher.close();
-            return;
-        }
-        // Show what we have right away; the vaults are checked in the background.
-        this.#open();
-        this.#reloadAll();
+    // --- What the launcher shows ---
+
+    /** Best matches for the start view; nothing for an empty query. */
+    search(query: string, limit: number): Item[] {
+        if (!query.trim())
+            return [];
+        return this.#index.search(query, {all: true}).slice(0, limit).map(item => this.#item(item));
     }
 
-    #open() {
-        this.#launcher.open({
-            query: this.#settings.get_string('last-query'),
-            selectId: this.#settings.get_string('last-entry-id'),
-        });
-        this.#showStatus();
-    }
-
-    #search(query: string): Entry[] {
-        const items: Entry[] = this.#index.search(query);
-        const rows: VaultRow[] = this.#enabledVaults
+    /** "Unlock Bitwarden" rows for vaults that are locked or failing. */
+    vaultRows(): Item[] {
+        return this.#enabledVaults
             .filter(v => ['locked', 'unlocking', 'error'].includes(this.#state(v).status))
-            .map(vault => ({id: `vault:${vault.id}`, vault, isVaultRow: true as const}));
-
-        // Locked vaults come first while browsing, but must not steal Enter from a search hit.
-        return query.trim() && items.length ? [...items, ...rows] : [...rows, ...items];
+            .map(vault => this.#vaultRow(vault));
     }
 
-    #describe(entry: Entry): RowContent {
-        if (!isVaultRow(entry)) {
-            return {
-                icon: KIND_ICONS[entry.kind],
-                title: entry.name || '(unnamed)',
-                subtitle: [entry.user, entry.location].filter(Boolean).join('  ·  '),
-                badge: {text: entry.vault.name, styleClass: entry.vault.badgeClass},
-            };
-        }
+    /** Commands for the start view. */
+    commands(): Item[] {
+        const command = (id: string, icon: string, title: string, subtitle: string, run: () => void): Item => ({
+            id: `command:${id}`,
+            icon: {name: icon, color: PASSWORDS_COLOR},
+            title,
+            subtitle,
+            accessory: 'Command',
+            actions: [{title: id === 'passwords' ? 'Open' : title, icon, run}],
+        });
+        return [
+            command('passwords', 'dialog-password-symbolic', 'Search Passwords',
+                this.#enabledVaults.map(v => v.name).join(' & ') || 'No vault enabled',
+                () => this.#launcher.push(this.view)),
+            command('lock-vaults', 'system-lock-screen-symbolic', 'Lock Vaults', 'Passwords', () => void this.#lockAll()),
+            command('sync-vaults', 'view-refresh-symbolic', 'Sync Vaults', 'Passwords', () => void this.#sync()),
+        ];
+    }
 
-        const {vault} = entry;
+    /** A recently used item, if its vault is unlocked. */
+    recent(id: string): Item | null {
+        if (!id.startsWith(RECENT_PREFIX))
+            return null;
+        const itemId = id.slice(RECENT_PREFIX.length);
+        const item = this.#index.items.find(i => i.id === itemId);
+        return item ? this.#item(item) : null;
+    }
+
+    #viewSections(query: string): Section[] {
+        const items = this.#index.search(query).map(item => this.#item(item));
+        const locked = this.vaultRows();
+        // Locked vaults come first while browsing, but must not steal Enter from a search hit.
+        return query.trim() && items.length
+            ? [{items}, {title: 'Locked', items: locked}]
+            : [{items: locked}, {items}];
+    }
+
+    #viewActions(): Action[] {
+        return [
+            {title: 'Sync Vaults', icon: 'view-refresh-symbolic', shortcut: {key: 'r', ctrl: true}, run: () => void this.#sync()},
+            {title: 'Lock Vaults', icon: 'system-lock-screen-symbolic', shortcut: {key: 'l', ctrl: true}, run: () => void this.#lockAll()},
+        ];
+    }
+
+    #item(item: VaultItem): Item {
+        const run = (verb: 'copy' | 'type', what: What) => () => void this.#perform(item, verb, what);
+        return {
+            id: item.id,
+            icon: {name: KIND_ICONS[item.kind]},
+            title: item.name || '(unnamed)',
+            subtitle: [item.user, item.location].filter(Boolean).join('  ·  '),
+            source: {icon: this.#logos.get(item.vault)!, styleClass: item.vault.logoClass},
+            actions: [
+                {title: 'Copy Password', icon: 'edit-copy-symbolic', shortcut: {key: 'c', ctrl: true, shift: true}, run: run('copy', 'password')},
+                {title: 'Copy Username', icon: 'avatar-default-symbolic', shortcut: {key: 'c', ctrl: true}, run: run('copy', 'user')},
+                {title: 'Type Password', icon: 'input-keyboard-symbolic', shortcut: {key: 'return', shift: true}, run: run('type', 'password')},
+                {title: 'Type Username and Password', icon: 'input-keyboard-symbolic', shortcut: {key: 'return', ctrl: true}, run: run('type', 'login')},
+                {title: 'Copy TOTP Code', icon: 'preferences-system-time-symbolic', shortcut: {key: 't', alt: true}, run: run('copy', 'totp')},
+                {title: 'Type Username', icon: 'input-keyboard-symbolic', shortcut: {key: 'u', alt: true, shift: true}, run: run('type', 'user')},
+                {title: 'Type TOTP Code', icon: 'input-keyboard-symbolic', shortcut: {key: 't', alt: true, shift: true}, run: run('type', 'totp')},
+            ],
+        };
+    }
+
+    #vaultRow(vault: Vault): Item {
         const {status, error} = this.#state(vault);
-        const badge = {text: vault.name, styleClass: vault.badgeClass};
+        const base = {
+            id: `vault:${vault.id}`,
+            source: {icon: this.#logos.get(vault)!, styleClass: vault.logoClass},
+            actions: [{title: status === 'error' ? 'Retry' : 'Unlock', icon: 'system-lock-screen-symbolic', run: () => void this.#unlock(vault)}],
+        };
         switch (status) {
         case 'unlocking':
-            return {icon: 'content-loading-symbolic', title: `Unlocking ${vault.name}…`, badge, dim: true};
+            return {...base, icon: {name: 'content-loading-symbolic'}, title: `Unlocking ${vault.name}…`, dim: true};
         case 'error':
-            return {
-                icon: 'dialog-warning-symbolic',
-                title: `${vault.name} is unavailable`,
-                subtitle: `${error}  ·  ⏎ retry`,
-                badge,
-                dim: true,
-            };
+            return {...base, icon: {name: 'dialog-warning-symbolic'}, title: `${vault.name} is unavailable`, subtitle: error, dim: true};
         default:
-            return {icon: 'system-lock-screen-symbolic', title: `Unlock ${vault.name}`, subtitle: 'Locked  ·  ⏎ unlock', badge};
+            return {...base, icon: {name: 'system-lock-screen-symbolic'}, title: `Unlock ${vault.name}`, subtitle: 'Locked'};
         }
     }
+
+    // --- Vault state ---
 
     #state(vault: Vault): VaultState {
         return this.#states.get(vault)!;
@@ -227,20 +234,10 @@ export class Passwords {
                 searchFields);
         }
         this.#launcher.refresh();
-        this.#showStatus();
     }
 
-    #showStatus() {
-        const vaults = this.#enabledVaults;
-        if (vaults.length === 0) {
-            this.#launcher.setStatus('No password manager enabled — see the extension preferences');
-            return;
-        }
-        const checking = vaults.filter(v => this.#state(v).status === 'checking' && !this.#state(v).items.length);
-        this.#launcher.setStatus(checking.length ? `Loading ${checking.map(v => v.name).join(' and ')}…` : null);
-    }
-
-    #reloadAll() {
+    /** Checks every enabled vault in the background and loads its items. */
+    reload() {
         for (const vault of this.#vaults) {
             if (vault.enabled)
                 void this.#reload(vault);
@@ -301,14 +298,13 @@ export class Passwords {
     /** Hides the launcher while another prompt needs the keyboard, then brings it back. */
     async #stepAside<R>(task: () => Promise<R>): Promise<R> {
         const wasOpen = this.#launcher.isOpen;
-        const query = this.#launcher.query;
-        const selectId = this.#launcher.selected?.id;
+        const restore = this.#launcher.stack;
         this.#launcher.close();
         try {
             return await task();
         } finally {
-            if (wasOpen && !this.#destroyed)
-                this.#launcher.open({query, selectId});
+            if (wasOpen && !this.#destroyed && restore.length)
+                this.#launcher.open(restore[0].view, {restore});
         }
     }
 
@@ -323,13 +319,15 @@ export class Passwords {
                     notifyError(`Could not sync ${v.name}`, e);
                 }
             }));
-        this.#reloadAll();
+        this.#launcher.setStatus(null);
+        this.reload();
     }
 
     async #lockAll() {
         await Promise.all(this.#enabledVaults.map(v => v.lock().catch(e => notifyError(`Could not lock ${v.name}`, e))));
         for (const vault of this.#enabledVaults)
             this.#setState(vault, {status: 'locked', items: []});
+        this.#clipboard.clear();
         osd('system-lock-screen-symbolic', 'Vaults locked');
     }
 
@@ -348,16 +346,15 @@ export class Passwords {
         const name = title === 'rbw' ? 'Bitwarden' : title;
         return this.#launcher.askSecret({
             prompt: [name, (prompt || 'password').toLowerCase()].filter(Boolean).join(' '),
-            description: [error, description].filter(Boolean).join('\n') || undefined,
+            description: [error, description].filter(Boolean).join(' · ') || undefined,
         });
     }
 
-    async #perform(item: VaultItem, action: string) {
-        this.#settings.set_string('last-query', this.#launcher.query);
-        this.#settings.set_string('last-entry-id', item.id);
-        this.#launcher.close();
+    // --- Using an item ---
 
-        const [verb, what] = action.split('-') as ['copy' | 'type', What];
+    async #perform(item: VaultItem, verb: 'copy' | 'type', what: What) {
+        this.#recents.add(`${RECENT_PREFIX}${item.id}`);
+        this.#launcher.close();
         try {
             const value = await this.#valueOf(item, what);
             if (this.#destroyed)

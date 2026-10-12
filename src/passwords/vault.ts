@@ -26,8 +26,9 @@ export interface Prompter {
 export interface Vault {
     readonly id: string;
     readonly name: string;
-    /** Extra style class for its badge */
-    readonly badgeClass: string;
+    /** Logo file in icons/ and the style class of its tile */
+    readonly logo: string;
+    readonly logoClass: string;
     readonly enabled: boolean;
 
     isUnlocked(): Promise<boolean>;

@@ -24,7 +24,8 @@ interface RbwEntry {
 export class RbwVault implements Vault {
     readonly id = 'bitwarden';
     readonly name = 'Bitwarden';
-    readonly badgeClass = 'ql-badge-bitwarden';
+    readonly logo = 'bitwarden.svg';
+    readonly logoClass = 'ql-source-bitwarden';
     readonly #settings: Gio.Settings;
 
     constructor(settings: Gio.Settings) {

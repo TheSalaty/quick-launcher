@@ -50,7 +50,8 @@ interface OpField {
 export class OnePasswordVault implements Vault {
     readonly id = '1password';
     readonly name = '1Password';
-    readonly badgeClass = 'ql-badge-1password';
+    readonly logo = '1password.svg';
+    readonly logoClass = 'ql-source-1password';
     readonly #settings: Gio.Settings;
     /** Session token from `op signin --raw`; only lives in memory. */
     #session: string | null = null;

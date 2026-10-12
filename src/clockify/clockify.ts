@@ -3,15 +3,17 @@ import GLib from 'gi://GLib';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
-import {Launcher, type RowContent} from '../lib/launcher.ts';
+import type {Action, Item, Launcher, Section, View} from '../lib/launcher.ts';
 import {notifyError, osd} from '../lib/output.ts';
+import type {Recents} from '../lib/recents.ts';
 import {SearchIndex, type Field} from '../lib/search.ts';
 import {ClockifyApi} from './api.ts';
 import {distinctTasks, duration, parseDraft, timeAgo, type Project, type Tag, type Task} from './tasks.ts';
 
 Gio._promisify(Gio.File.prototype, 'replace_contents_async');
 
-const HINTS = '⏎ start / stop   ⇧⏎ new from text   @project #tag   ⌃S stop   ⌃R reload';
+export const CLOCKIFY_COLOR = '#03a9f4';
+const RECENT_PREFIX = 'clockify:';
 
 interface CacheData {
     account: string;
@@ -28,27 +30,6 @@ function searchFields(task: Task): Field[] {
         [3, task.tagNames],
         [2, task.clientName],
     ];
-}
-
-function describe(task: Task): RowContent {
-    const project = [task.projectName, task.taskName].filter(Boolean).join(': ');
-    const tags = task.tagNames.map(t => `#${t}`).join(' ');
-    const title = task.description || '(no description)';
-
-    if (task.isNew) {
-        return {
-            icon: 'list-add-symbolic',
-            title,
-            subtitle: ['New entry', project, tags].filter(Boolean).join('  ·  '),
-        };
-    }
-    return {
-        icon: task.running ? 'media-playback-stop-symbolic' : 'media-playback-start-symbolic',
-        iconStyle: task.color ? `color: ${task.color};` : null,
-        title,
-        subtitle: [project, task.clientName, tags].filter(Boolean).join('  ·  '),
-        trailing: task.running ? `● ${duration(task.lastStart)}` : timeAgo(task.lastStart),
-    };
 }
 
 /**
@@ -83,78 +64,149 @@ class Cache {
 
 /** Starts Clockify timers from recent entries or a new description. */
 export class Clockify {
-    readonly #settings: Gio.Settings;
+    readonly #launcher: Launcher;
+    readonly #recents: Recents;
     readonly #api: ClockifyApi;
     readonly #cache = new Cache();
-    readonly #launcher: Launcher<Task>;
     #index = new SearchIndex<Task>([], searchFields);
     #projects: Project[] = [];
     #tags: Tag[] = [];
     #account: string | null = null;
+    #loading = false;
     #destroyed = false;
 
-    constructor(settings: Gio.Settings) {
-        this.#settings = settings;
+    readonly view: View;
+
+    constructor(settings: Gio.Settings, launcher: Launcher, recents: Recents) {
+        this.#launcher = launcher;
+        this.#recents = recents;
         this.#api = new ClockifyApi(settings);
-        this.#launcher = new Launcher<Task>({
+        this.view = {
+            title: 'Clockify',
             icon: 'alarm-symbolic',
-            placeholder: 'Start time entry…',
-            hints: HINTS,
-            search: query => this.#search(query),
-            describe,
-            actionFor: (_task, {enter, shift}) => enter ? shift ? 'new' : 'start' : null,
-            commands: {
-                r: () => void this.#reload(),
-                s: () => void this.#stop(),
+            placeholder: 'Start time entry…  @project #tag',
+            search: query => this.#viewSections(query),
+            actions: () => this.#viewActions(),
+            onOpen: () => {
+                if (!this.#api.configured)
+                    this.#launcher.setStatus('Set your Clockify API key in the preferences');
+                else if (!this.#index.items.length)
+                    this.#launcher.setStatus('Loading Clockify…');
             },
-            onActivate: (task, action) => void this.#start(task, action),
-        });
+        };
     }
 
     destroy() {
         this.#destroyed = true;
-        this.#launcher.destroy();
         this.#api.destroy();
     }
 
-    toggle() {
-        if (this.#launcher.isOpen) {
-            this.#launcher.close();
-            return;
-        }
-        this.#loadCache();
-        this.#launcher.open({
-            query: this.#settings.get_string('clockify-last-query'),
-            selectId: this.#settings.get_string('clockify-last-entry-id'),
-        });
-        this.#launcher.setStatus(this.#index.items.length ? null : 'Loading…');
-        void this.#reload();
+    get configured(): boolean {
+        return this.#api.configured;
     }
 
-    /** Fills in the last fetched data, unless it belongs to another account. */
-    #loadCache() {
-        const account = this.#api.account;
-        if (this.#account === account)
-            return;
+    // --- What the launcher shows ---
 
-        this.#account = account;
-        const {tasks = [], projects = [], tags = []} = this.#cache.load(account) ?? {};
-        this.#setData(tasks, projects, tags);
+    /** Best matching recent entries for the start view. */
+    search(query: string, limit: number): Item[] {
+        if (!query.trim() || !this.configured)
+            return [];
+        return this.#index.search(stripSigils(query), {all: true}).slice(0, limit).map(t => this.#item(t));
     }
 
-    #setData(tasks: Task[], projects: Project[], tags: Tag[]) {
-        this.#projects = projects;
-        this.#tags = tags;
-        this.#index = new SearchIndex(tasks, searchFields);
-        this.#launcher.refresh();
+    commands(): Item[] {
+        if (!this.configured)
+            return [];
+        const running = this.#index.items.find(t => t.running);
+        return [
+            {
+                id: 'command:clockify',
+                icon: {name: 'alarm-symbolic', color: CLOCKIFY_COLOR},
+                title: 'Start Timer',
+                subtitle: 'Clockify',
+                accessory: 'Command',
+                actions: [{title: 'Open', icon: 'go-next-symbolic', run: () => this.#launcher.push(this.view)}],
+            },
+            ...running ? [{
+                id: 'command:clockify-stop',
+                icon: {name: 'media-playback-stop-symbolic', color: CLOCKIFY_COLOR},
+                title: 'Stop Timer',
+                subtitle: running.description || running.projectName || 'Clockify',
+                accessory: 'Command',
+                actions: [{title: 'Stop Timer', icon: 'media-playback-stop-symbolic', run: () => void this.#stop()}],
+            }] : [],
+        ];
     }
 
-    #search(query: string): Task[] {
-        const results = this.#index.search(query.replace(/(^|\s)[@#]/g, '$1'));
+    /** "Start timer “text”" for whatever was typed in the start view. */
+    fallback(query: string): Item | null {
+        if (!this.configured || !query.trim())
+            return null;
+        const draft = this.#draft(query);
+        if (!draft.description && !draft.projectId)
+            return null;
+        return {
+            ...this.#item(draft),
+            id: 'clockify:fallback',
+            icon: {name: 'alarm-symbolic', color: CLOCKIFY_COLOR},
+            title: `Start Timer “${draft.description || draft.projectName}”`,
+        };
+    }
+
+    recent(id: string): Item | null {
+        if (!id.startsWith(RECENT_PREFIX))
+            return null;
+        const task = this.#index.items.find(t => t.id === id.slice(RECENT_PREFIX.length));
+        return task && !task.running ? this.#item(task) : null;
+    }
+
+    #viewSections(query: string): Section[] {
+        const tasks = this.#index.search(stripSigils(query));
         const draft = this.#draft(query);
         if (draft.description || draft.projectId)
-            results.push(draft);
-        return results;
+            tasks.push(draft);
+        return [{items: tasks.map(t => this.#item(t))}];
+    }
+
+    #viewActions(): Action[] {
+        return [
+            {title: 'Stop Running Timer', icon: 'media-playback-stop-symbolic', shortcut: {key: 's', ctrl: true}, run: () => void this.#stop()},
+            {title: 'Reload', icon: 'view-refresh-symbolic', shortcut: {key: 'r', ctrl: true}, run: () => void this.load(true)},
+        ];
+    }
+
+    #item(task: Task): Item {
+        const project = [task.projectName, task.taskName].filter(Boolean).join(': ');
+        const tags = task.tagNames.map(t => `#${t}`).join(' ');
+        const startNew: Action = {
+            title: 'Start as New Entry',
+            icon: 'list-add-symbolic',
+            shortcut: {key: 'return', shift: true},
+            run: () => void this.#start(this.#draft(this.#launcher.query)),
+        };
+
+        if (task.isNew) {
+            return {
+                id: 'new',
+                icon: {name: 'list-add-symbolic'},
+                title: task.description || '(no description)',
+                subtitle: ['New entry', project, tags].filter(Boolean).join('  ·  '),
+                actions: [{title: 'Start Timer', icon: 'media-playback-start-symbolic', run: () => void this.#start(task)}],
+            };
+        }
+        return {
+            id: task.id,
+            icon: {
+                name: task.running ? 'media-playback-stop-symbolic' : 'media-playback-start-symbolic',
+                style: task.color ? `color: ${task.color};` : undefined,
+            },
+            title: task.description || '(no description)',
+            subtitle: [project, task.clientName, tags].filter(Boolean).join('  ·  '),
+            accessory: task.running ? `● ${duration(task.lastStart)}` : timeAgo(task.lastStart),
+            actions: task.running
+                ? [{title: 'Stop Timer', icon: 'media-playback-stop-symbolic', run: () => void this.#stop()}, startNew]
+                : [{title: 'Start Timer', icon: 'media-playback-start-symbolic', run: () => void this.#start(task)}, startNew],
+        };
     }
 
     #draft(query: string): Task {
@@ -174,11 +226,35 @@ export class Clockify {
         };
     }
 
-    async #reload() {
-        if (!this.#api.configured) {
-            this.#launcher.setStatus('Set your Clockify API key in the extension preferences');
+    // --- Data ---
+
+    /** Shows cached entries right away and refreshes them in the background. */
+    load(force = false) {
+        if (!this.configured)
             return;
-        }
+        this.#loadCache();
+        if (!this.#loading || force)
+            void this.#reload();
+    }
+
+    #loadCache() {
+        const account = this.#api.account;
+        if (this.#account === account)
+            return;
+        this.#account = account;
+        const {tasks = [], projects = [], tags = []} = this.#cache.load(account) ?? {};
+        this.#setData(tasks, projects, tags);
+    }
+
+    #setData(tasks: Task[], projects: Project[], tags: Tag[]) {
+        this.#projects = projects;
+        this.#tags = tags;
+        this.#index = new SearchIndex(tasks, searchFields);
+        this.#launcher.refresh();
+    }
+
+    async #reload() {
+        this.#loading = true;
         try {
             const account = this.#api.account;
             const [entries, allProjects, allTags] = await Promise.all([
@@ -195,7 +271,8 @@ export class Clockify {
 
             this.#account = account;
             this.#setData(tasks, projects, tags);
-            this.#launcher.setStatus(null);
+            if (this.#launcher.view === this.view)
+                this.#launcher.setStatus(null);
 
             this.#cache.save({account, tasks, projects, tags}).catch(e =>
                 console.error('quick-launcher: Could not write Clockify cache', e));
@@ -203,24 +280,20 @@ export class Clockify {
             if (this.#destroyed)
                 return;
             console.error('quick-launcher: Clockify request failed', e);
-            this.#launcher.setStatus(`Clockify: ${(e as Error).message}`);
+            if (this.#launcher.view === this.view)
+                this.#launcher.setStatus(`Clockify: ${(e as Error).message}`);
+        } finally {
+            this.#loading = false;
         }
     }
 
-    async #start(task: Task, action: string) {
-        const query = this.#launcher.query;
-        this.#settings.set_string('clockify-last-query', query);
-        this.#settings.set_string('clockify-last-entry-id', task.id);
+    // --- Actions ---
 
-        if (task.running && action === 'start') {
-            await this.#stop();
-            return;
-        }
-        if (action === 'new' || task.isNew)
-            task = this.#draft(query);
+    async #start(task: Task) {
         if (!task.description && !task.projectId)
             return;
-
+        if (!task.isNew)
+            this.#recents.add(`${RECENT_PREFIX}${task.id}`);
         this.#launcher.close();
         try {
             await this.#api.start(task);
@@ -243,4 +316,8 @@ export class Clockify {
             notifyError('Could not stop Clockify timer', e);
         }
     }
+}
+
+function stripSigils(query: string): string {
+    return query.replace(/(^|\s)[@#]/g, '$1');
 }

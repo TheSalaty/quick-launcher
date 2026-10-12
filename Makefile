@@ -18,6 +18,8 @@ schemas: build
 
 assets: schemas
 	cp src/metadata.json src/stylesheet.css $(BUILD)/
+	cp -r src/icons $(BUILD)/
+	mkdir -p $(BUILD)/emoji && cp src/emoji/emoji.json $(BUILD)/emoji/
 
 install: assets
 	rm -rf $(TARGET)

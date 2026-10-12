@@ -13,14 +13,18 @@ On Wayland the shell cannot reload an extension in place, so log out and back in
 `make install`.
 
 ```
-src/extension.ts        enable/disable, keybindings
+src/extension.ts        enable/disable, keybindings, wires the providers together
+src/root.ts             the start view: recent items, commands, and the combined search
 src/prefs.ts            Adwaita preferences, shortcut recorder, pinentry bridge installer
-src/lib/launcher.ts     the popup: search field, pooled rows, password prompt mode
+src/lib/launcher.ts     the popup: view stack, sections, pooled rows, footer, action panel, password prompt
 src/lib/search.ts       Bitwarden-style token search (no GI imports, unit tested)
 src/lib/output.ts       secret clipboard, virtual keyboard, timers
 src/lib/subprocess.ts   Gio.Subprocess wrapper; secrets go over stdin, never argv
+src/calc/               calculator: units, math, dates and time zones (pure, unit tested), ECB rates
 src/passwords/          Vault interface, rbw and 1Password vaults, the D-Bus pinentry service
-src/clockify/           API client, the launcher, task grouping and @project/#tag parsing
+src/clockify/           API client, provider, task grouping and @project/#tag parsing
+src/emoji/              emoji data (Emojibase, English + German) and search
+src/system/             lock, suspend, power and desktop toggles
 src/bin/pinentry.ts     the pinentry program rbw runs when the bridge is on
 tools/                  headless screenshot harness with fake rbw, op and Clockify
 test/                   unit tests
@@ -30,6 +34,45 @@ TypeScript is compiled file by file with `tsc` (no bundler), so `dist/` mirrors 
 come from [`@girs`](https://github.com/gjsify/ts-for-gir). Sources import each other with `.ts`
 extensions; `rewriteRelativeImportExtensions` turns them into `.js` for GJS, and Node runs the
 unit tests from the sources directly.
+
+## Launcher, views and providers
+
+`Launcher` (`src/lib/launcher.ts`) knows nothing about passwords or timers. It shows a stack of
+`View`s; a view turns the query into `Section`s of `Item`s, and every item carries its `Action`s.
+The first action runs on Enter and is named in the footer, the others have optional shortcuts and
+are all listed in the action panel (Ctrl+K). Views can add actions that apply to every item, such
+as *Sync Vaults* on Ctrl+R.
+
+Each feature is a provider with its own view (Passwords, Clockify, Emoji) plus a few methods
+the start view uses: `search(query, limit)` for the combined results, `commands()`, and
+`recent(id)` to turn an id from the *Recent* list back into an item. `Root` (`src/root.ts`) puts
+it together: the calculator answer first, then a command whose name starts with the query, then
+passwords, Clockify entries, the other commands and fallbacks. In the start view every word of
+the query has to match, so `2 min in year` doesn't list everything containing "in".
+
+Styling comes from the shell theme. The window is a `.popup-menu-content`, rows are
+`.popup-menu-item`s and the search field is a plain `StEntry`, so light and dark styles and the
+accent color follow the system. Secondary text is dimmed with actor opacity instead of colors.
+`stylesheet.css` only sets spacing and sizes, the colored command tiles and the vault logos. The
+backdrop has a `Shell.BlurEffect` in background mode, which blurs the desktop behind the popup.
+
+## Calculator
+
+`src/calc/calculator.ts` tries `dates.ts` first and then `math.ts`. Both are pure TypeScript
+using `Intl` (available in GJS and Node), so they are covered by `test/calc.test.ts`.
+
+- `units.ts` defines every unit as a factor to SI base units plus a dimension vector (length,
+  mass, time, current, temperature, amount, luminosity, information, angle, currency). Any two
+  units with the same dimension convert, and inverse dimensions convert reciprocally (mpg ↔
+  l/100km). SI and binary prefixes are generated. Temperatures carry an offset.
+- `math.ts` is a recursive-descent parser over quantities: implicit multiplication (`2pi`),
+  implicit addition of like units (`1h 30min`), percentages (`of`, `off`, `+ 20%`), functions,
+  conversion with `in`/`to`/`as`/`nach`, bases and time spans. A plain number or a lone `5 km`
+  is not an answer, so ordinary searches don't trigger it.
+- `dates.ts` handles English and German date words, countdowns, calendar weeks, Unix timestamps
+  and time zones. Places resolve through aliases (cities, countries, airports, abbreviations) and
+  the city part of every IANA zone the runtime knows.
+- `rates.ts` fetches the ECB reference rates at most twice a day and caches them.
 
 ## Vaults
 
@@ -69,11 +112,11 @@ with `rbw config set pinentry`. The bridge, installed by the preferences into
 The D-Bus object is only exported while the setting is on. rbw reads its config on every
 prompt, so switching takes effect without restarting the agent.
 
-## Launcher
+## Rows
 
 Rows are created on first use and then reused: typing changes their labels instead of
-destroying and rebuilding actors. At most 50 rows are shown. Selection follows the item id
-across refreshes, so background reloads don't make it jump.
+destroying and rebuilding actors. At most 60 rows are shown. Once you move the selection, it
+follows that item across background reloads; until then the first result stays selected.
 
 ## Screenshots
 
@@ -89,7 +132,7 @@ them (the 1Password master password is `hunter2`). `tools/fixtures/clockify.py` 
 Clockify API on `127.0.0.1:8765`.
 
 ```sh
-make screenshots       # writes docs/passwords.png, search.png, unlock.png, clockify.png
+make screenshots       # writes docs/*.png (QL_SCHEME=prefer-light for the light style)
 ```
 
 ## Releasing

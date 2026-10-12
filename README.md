@@ -1,28 +1,31 @@
 # Quick Launcher
 
-A GNOME Shell extension with Spotlight-style launchers for your passwords and your Clockify timer.
+A Raycast-style launcher for GNOME Shell: your passwords, your Clockify timer, a calculator, emoji
+and system commands behind one shortcut.
 
-Search **Bitwarden** and **1Password** in one list, copy or type a password, and see which vault
-every entry comes from. Locked vaults unlock right in the launcher. A second launcher starts
-Clockify timers from your recent entries.
+Press <kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>Enter</kbd> and start typing. One search covers
+**Bitwarden** and **1Password**, recent Clockify entries and every command, and anything that looks
+like math, a unit conversion, a date or a time zone is answered right away.
 
 <p align="center">
-  <img src="docs/passwords.png" alt="Quick Launcher searching Bitwarden and 1Password in one list" width="560">
+  <img src="docs/root.png" alt="Quick Launcher with recent items and commands" width="600">
 </p>
 
 ## Features
 
 - One search over Bitwarden (via [rbw](https://github.com/doy/rbw)) and 1Password (via the
-  [`op` CLI](https://developer.1password.com/docs/cli/)), each entry tagged with its source
-- Unlock either vault from the launcher: type the master password there, or hand over to the
+  [`op` CLI](https://developer.1password.com/docs/cli/)), each entry tagged with its vault's logo
+- Unlock either vault in the launcher: type the master password there, or hand over to the
   1Password app
-- Copy or type passwords, usernames and TOTP codes; typing works on Wayland without ydotool
-- Copied secrets are cleared after 30 seconds and removed from Clipboard Indicator's history
-- Clockify: restart any recent entry, or a new one with `@project` and `#tag`
-- Opens instantly with what it already knows and refreshes in the background
+- Copy or type passwords, usernames and TOTP codes. Typing works on Wayland without ydotool
+- Start and stop Clockify timers from your recent entries, or a new one with `@project` and `#tag`
+- Calculator with units, currencies, percentages, dates, calendar weeks and time zones
+- Emoji search in English and German
+- System commands: lock, suspend, log out, restart, power off, screenshot, dark mode, Do Not
+  Disturb, Night Light
+- Follows the shell theme (light, dark, accent color) and blurs the desktop behind it
 
-Quick Launcher supports GNOME Shell 48, 49 and 50. It works with either password manager on its
-own or with both.
+Quick Launcher supports GNOME Shell 48, 49 and 50.
 
 ## Install
 
@@ -60,34 +63,44 @@ make install
 
 Log out and back in before enabling the extension. Run `make pack` to build an installable zip.
 
-## Passwords
+## Using it
 
-Press <kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>Enter</kbd> and start typing. Every word is matched
-against name, username, URLs and folder, the way the Bitwarden clients search.
+When the launcher opens, recently used items and all commands are listed. Typing searches
+everything at once and groups the results.
 
 <p align="center">
-  <img src="docs/search.png" alt="The same GitHub login found in Bitwarden and in 1Password" width="560">
+  <img src="docs/search.png" alt="A search finding a GitHub login, with commands to use the text elsewhere" width="600">
 </p>
 
 | Key | Action |
 | --- | --- |
-| <kbd>Enter</kbd> | copy password (on a locked vault: unlock it) |
-| <kbd>Shift</kbd><kbd>Enter</kbd> | type password, then Enter |
-| <kbd>Ctrl</kbd><kbd>Enter</kbd> | type username, Tab, password, Enter |
-| <kbd>Alt</kbd><kbd>P</kbd> / <kbd>U</kbd> / <kbd>T</kbd> | copy password / username / TOTP code (add <kbd>Shift</kbd> to type it) |
-| <kbd>Ctrl</kbd><kbd>R</kbd> | sync and reload |
-| <kbd>Ctrl</kbd><kbd>L</kbd> | lock all vaults |
-| <kbd>Esc</kbd> | close, or cancel a password prompt |
-
-The last search and the last-used entry come back when you open the launcher, so pressing
-<kbd>Enter</kbd> repeats what you did last.
-
-### Unlocking
-
-A locked vault shows up as an **Unlock** row. Press <kbd>Enter</kbd> on it.
+| <kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>Enter</kbd> | open or close the launcher |
+| <kbd>Enter</kbd> | run the selected item's main action (shown at the bottom right) |
+| <kbd>Ctrl</kbd><kbd>K</kbd> | show all actions for the selected item |
+| <kbd>↑</kbd> <kbd>↓</kbd> / <kbd>Tab</kbd> / <kbd>Ctrl</kbd><kbd>N</kbd> <kbd>Ctrl</kbd><kbd>P</kbd> | move the selection |
+| <kbd>Esc</kbd> | go back, or close |
+| <kbd>Backspace</kbd> on an empty field | go back |
 
 <p align="center">
-  <img src="docs/unlock.png" alt="Typing the 1Password master password into the launcher" width="560">
+  <img src="docs/actions.png" alt="The action panel listing every action for a password with its shortcut" width="600">
+</p>
+
+### Passwords
+
+| Key | Action |
+| --- | --- |
+| <kbd>Enter</kbd> or <kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>C</kbd> | copy password |
+| <kbd>Ctrl</kbd><kbd>C</kbd> | copy username |
+| <kbd>Shift</kbd><kbd>Enter</kbd> | type password, then Enter |
+| <kbd>Ctrl</kbd><kbd>Enter</kbd> | type username, Tab, password, Enter |
+| <kbd>Alt</kbd><kbd>T</kbd> | copy TOTP code (<kbd>Alt</kbd><kbd>Shift</kbd><kbd>T</kbd> types it) |
+| <kbd>Ctrl</kbd><kbd>R</kbd> / <kbd>Ctrl</kbd><kbd>L</kbd> | sync / lock vaults (in *Search Passwords*) |
+
+A locked vault shows up as **Unlock Bitwarden** or **Unlock 1Password**. Press
+<kbd>Enter</kbd> on it.
+
+<p align="center">
+  <img src="docs/unlock.png" alt="Typing the 1Password master password into the launcher" width="600">
 </p>
 
 - **1Password**: with *Settings → Developer → Integrate with 1Password CLI* turned on in the app,
@@ -98,25 +111,61 @@ A locked vault shows up as an **Unlock** row. Press <kbd>Enter</kbd> on it.
   the launcher* in the settings to get that prompt in the launcher. Without it, your usual
   pinentry asks and the launcher comes back afterwards.
 
-## Clockify
+Copied secrets are cleared from the clipboard after 30 seconds, and removed from Clipboard
+Indicator's history.
 
-Press <kbd>Shift</kbd><kbd>Alt</kbd><kbd>Enter</kbd>. Your recent entries are listed newest first,
-with when you last worked on them. The running timer is on top.
+### Calculator
+
+Anything that can be calculated is answered at the top. <kbd>Enter</kbd> copies the result.
 
 <p align="center">
-  <img src="docs/clockify.png" alt="Recent Clockify entries with the running timer on top" width="560">
+  <img src="docs/calculator.png" alt="2 min in year answered as 3.8 × 10⁻⁶ years" width="600">
 </p>
 
-| Key | Action |
+| Type | Examples |
 | --- | --- |
-| <kbd>Enter</kbd> | start the selected entry, or stop it if it is running |
-| <kbd>Shift</kbd><kbd>Enter</kbd> | start a new entry from the typed text |
-| <kbd>Ctrl</kbd><kbd>S</kbd> | stop the running timer |
-| <kbd>Ctrl</kbd><kbd>R</kbd> | reload |
+| Math | `2+3*4`, `sqrt(625)`, `2^10`, `10!`, `sin(30)` (degrees), `10 mod 3`, `1,5 * 2` |
+| Percentages | `52% of 900`, `7 % von 200`, `20% off 80`, `80 + 20%` |
+| Units | `2 min in year`, `1h 30min in min`, `10ft in m`, `100 km/h in mph`, `30 mpg in l/100km`, `1 GiB in MB`, `20 c in f`, `2 tage in stunden` |
+| Time spans | `145 min to timespan`, `55h in workdays` |
+| Currencies | `100 usd in eur`, `$50`, `100 chf` (shown in your default currency) |
+| Bases | `255 in hex`, `0xff in bin` |
+| Dates | `today`, `heute`, `next friday`, `monday in 3 weeks`, `vor 2 wochen`, `today + 10 days` |
+| Countdowns | `days until 24.12.`, `tage bis weihnachten`, `weeks until easter`, `days since 1.1.` |
+| Calendar weeks | `kw`, `kw 52`, `week 1 2027` |
+| Timestamps | `1760000000`, `unix`, `2024-03-15T14:30:00Z` |
+| Time zones | `time in tokyo`, `zeit in new york`, `5pm berlin in tokyo`, `15:00 in sf`, `diff london` |
 
-In a new entry, `@proj` picks the first matching project and `#tag` adds tags, for example
-`Standup @falcon #meeting`. Starting a timer stops the running one at the same second, so there
-are no gaps.
+Units cover length, area, volume, mass, time, speed, temperature, data, energy, power, pressure,
+force, frequency, angles and more, with SI and binary prefixes and German names. Exchange rates
+are the European Central Bank's daily reference rates.
+
+<p align="center">
+  <img src="docs/timezone.png" alt="time in tokyo answered with the time, offset and difference" width="600">
+</p>
+
+### Clockify
+
+Matching recent entries show up in the search, with when you last worked on them.
+<kbd>Enter</kbd> starts an entry again, or stops it if it is running; *Stop Timer* is also a
+command while a timer runs. Starting a timer stops the running one at the same second, so there are no gaps.
+
+<p align="center">
+  <img src="docs/clockify.png" alt="A recent Clockify entry found by typing standup" width="600">
+</p>
+
+*Start Timer “…”* starts a new entry from whatever you typed. `@proj` picks the first matching
+project and `#tag` adds tags, for example `Standup @falcon #meeting`. The *Start Timer* command
+lists all recent entries.
+
+### Emoji
+
+Start the search with `:` (`:rakete`, `:heart`) or open *Search Emoji & Symbols*. English and
+German names both work. <kbd>Enter</kbd> copies the emoji.
+
+<p align="center">
+  <img src="docs/emoji.png" alt="Emoji results for :rocket" width="600">
+</p>
 
 ## Settings
 
@@ -124,10 +173,11 @@ are no gaps.
 gnome-extensions prefs quick-launcher@julian.falcondev.de
 ```
 
-You can change both shortcuts, turn each password manager on or off, set the rbw and op
-binaries, the 1Password account and unlock method, how long copied secrets stay on the clipboard,
-and the Clockify API key. Workspaces on a regional Clockify server need the matching API URL,
-for example `https://euc1.clockify.me/api/v1`.
+Or run *Quick Launcher Settings* from the launcher. You can change the shortcut, turn each
+password manager on or off, set the rbw and op binaries, the 1Password account and unlock
+method, the default currency, how long copied secrets stay on the clipboard, and the Clockify API
+key. An optional second shortcut opens Clockify directly. Workspaces on a regional Clockify server
+need the matching API URL, for example `https://euc1.clockify.me/api/v1`.
 
 ## Notes
 
@@ -138,11 +188,13 @@ for example `https://euc1.clockify.me/api/v1`.
 - The Bitwarden pinentry bridge changes rbw's `pinentry` setting. Turning it off restores the
   previous value. While the extension isn't running, the bridge passes prompts on to that
   pinentry.
-- The last Clockify entries, projects and tags are cached in `~/.cache/quick-launcher/`, so the
-  list shows up right away after a restart.
+- Clockify entries and exchange rates are cached in `~/.cache/quick-launcher/`, so they show up
+  right away after a restart.
 
 For development notes, see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
 ## License
 
-[MIT](LICENSE). Quick Launcher is not affiliated with Bitwarden, 1Password or Clockify.
+[MIT](LICENSE). Emoji names come from [Emojibase](https://emojibase.dev) (MIT), the Bitwarden and
+1Password logos from [Simple Icons](https://simpleicons.org) (CC0). Quick Launcher is not
+affiliated with Bitwarden, 1Password, Clockify or Raycast.

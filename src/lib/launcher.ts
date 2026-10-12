@@ -1,4 +1,5 @@
 import Clutter from 'gi://Clutter';
+import type Gio from 'gi://Gio';
 import Pango from 'gi://Pango';
 import Shell from 'gi://Shell';
 import St from 'gi://St';
@@ -6,92 +7,146 @@ import St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {ensureActorVisibleInScrollView} from 'resource:///org/gnome/shell/misc/animationUtils.js';
 
-const MAX_ROWS = 50;
-const WIDTH = 680;
+const MAX_ROWS = 60;
+/** Opacity of secondary text */
+const DIM = 150;
+const WIDTH = 720;
 
-export interface Keys {
-    /** Enter or a click */
-    enter: boolean;
-    /** Lowercase character of the pressed key, '' for Enter */
-    char: string;
-    ctrl: boolean;
-    shift: boolean;
-    alt: boolean;
+export interface Shortcut {
+    /** Lowercase character, or 'return' */
+    key: string;
+    ctrl?: boolean;
+    shift?: boolean;
+    alt?: boolean;
 }
 
-export interface RowContent {
-    icon: string;
-    iconStyle?: string | null;
+export interface Action {
     title: string;
-    subtitle?: string;
-    /** Small pill on the right, e.g. the vault an item comes from */
-    badge?: {text: string; styleClass?: string; style?: string};
-    /** Dim text on the right, e.g. a time */
-    trailing?: string;
-    dim?: boolean;
+    icon?: string;
+    shortcut?: Shortcut;
+    destructive?: boolean;
+    run(): void;
 }
 
-export interface LauncherOptions<T extends {id: string}> {
+/** A symbolic icon (on a colored tile if `color` is set), a file icon, or a character such as an emoji. */
+export type Icon =
+    | {name: string; color?: string; style?: string}
+    | {gicon: Gio.Icon}
+    | {text: string};
+
+export interface Item {
+    id: string;
+    icon: Icon;
+    title: string;
+    /** Dim text right after the title */
+    subtitle?: string;
+    /** Dim text on the right */
+    accessory?: string;
+    /** Logo tile on the right, e.g. the vault an item comes from */
+    source?: {icon: Gio.Icon; styleClass?: string};
+    /** A calculator answer: big title with the expression below */
+    answer?: boolean;
+    dim?: boolean;
+    /** Extra words the start view matches, e.g. "sperren" for Lock Screen */
+    keywords?: string;
+    /** The first action runs on Enter. */
+    actions: Action[];
+}
+
+export interface Section {
+    title?: string;
+    items: Item[];
+}
+
+export interface View {
+    /** Shown in the footer while this view is open */
+    title: string;
     icon: string;
     placeholder: string;
-    hints: string;
-    search(query: string): T[];
-    describe(item: T): RowContent;
-    /** Maps a key press (or click) on an item to an action name, or null. */
-    actionFor(item: T, keys: Keys): string | null;
-    /** Ctrl+<char> shortcuts that don't need a selected item */
-    commands?: Record<string, () => void>;
-    /** The launcher stays open; call close() when appropriate. */
-    onActivate(item: T, action: string): void;
-}
-
-interface SecretRequest {
-    resolve(secret: string | null): void;
-    /** The launcher was opened just for this prompt and closes afterwards. */
-    standalone: boolean;
-    savedQuery: string;
+    search(query: string): Section[];
+    /** Available on every item, e.g. "Sync" with Ctrl+R */
+    actions?(): Action[];
+    onOpen?(): void;
 }
 
 interface Row {
     actor: St.BoxLayout;
+    labels: St.BoxLayout;
+    iconBox: St.Bin;
     icon: St.Icon;
+    glyph: St.Label;
     title: St.Label;
     subtitle: St.Label;
-    badge: St.Label;
-    trailing: St.Label;
-    /** Inline icon style (e.g. a project color), dropped while selected */
+    accessory: St.Label;
+    source: St.Bin;
     iconStyle: string | null;
 }
 
-/** A Spotlight-style search popup; providers supply items and actions. */
-export class Launcher<T extends {id: string}> {
-    readonly #options: LauncherOptions<T>;
+interface Frame {
+    view: View;
+    query: string;
+    selectId?: string;
+}
+
+interface Prompt {
+    resolve(secret: string | null): void;
+    standalone: boolean;
+}
+
+export function shortcutLabel(s: Shortcut): string[] {
+    return [
+        ...s.ctrl ? ['Ctrl'] : [],
+        ...s.alt ? ['Alt'] : [],
+        ...s.shift ? ['⇧'] : [],
+        s.key === 'return' ? '↵' : s.key.toUpperCase(),
+    ];
+}
+
+/**
+ * A Spotlight-style popup with a stack of views. Views return sections of
+ * items; every item has actions, the first runs on Enter and all of them
+ * are listed in the action panel (Ctrl+K).
+ */
+export class Launcher {
     readonly #backdrop: St.Widget;
     readonly #box: St.BoxLayout;
     readonly #entry: St.Entry;
     readonly #entryIcon: St.Icon;
-    readonly #status: St.Label;
+    readonly #back: St.Button;
     readonly #scroll: St.ScrollView;
     readonly #list: St.BoxLayout;
-    readonly #hints: St.Label;
+    readonly #empty: St.Label;
+    readonly #footerIcon: St.Icon;
+    readonly #footerText: St.Label;
+    readonly #primaryLabel: St.Label;
+    readonly #primaryKeys: St.BoxLayout;
+    readonly #actionsHint: St.BoxLayout;
+    readonly #panel: St.BoxLayout;
+    readonly #panelList: St.BoxLayout;
     readonly #rows: Row[] = [];
-    #results: T[] = [];
-    #visibleRows = 0;
+    readonly #headers: St.Label[] = [];
+    readonly #panelRows: St.BoxLayout[] = [];
+    #stack: Frame[] = [];
+    #items: Item[] = [];
     #selected = 0;
     #grab: Clutter.Grab | null = null;
-    #secret: SecretRequest | null = null;
+    #prompt: Prompt | null = null;
+    #panelActions: Action[] | null = null;
+    #panelSelected = 0;
+    #savedQuery = '';
+    #status: string | null = null;
+    #ignoreChange = false;
+    /** The user moved the selection, so refreshes keep it on the same item. */
+    #userSelected = false;
 
-    constructor(options: LauncherOptions<T>) {
-        this.#options = options;
-
+    constructor() {
         this.#backdrop = new St.Widget({
             reactive: true,
             visible: false,
-            constraints: new Clutter.BindConstraint({
-                source: global.stage,
-                coordinate: Clutter.BindCoordinate.ALL,
-            }),
+            constraints: new Clutter.BindConstraint({source: global.stage, coordinate: Clutter.BindCoordinate.ALL}),
         });
+        // Blur and slightly dim everything behind the popup.
+        this.#backdrop.add_effect(new Shell.BlurEffect({mode: Shell.BlurMode.BACKGROUND, radius: 30, brightness: 0.8}));
         this.#backdrop.connect('button-press-event', (_actor, event: Clutter.Event) => {
             const [x, y] = event.get_coords();
             const [bx, by] = this.#box.get_transformed_position();
@@ -101,49 +156,92 @@ export class Launcher<T extends {id: string}> {
             return Clutter.EVENT_PROPAGATE;
         });
 
-        this.#box = new St.BoxLayout({
-            style_class: 'ql-box',
-            orientation: Clutter.Orientation.VERTICAL,
-        });
+        this.#box = new St.BoxLayout({style_class: 'popup-menu-content ql-box', orientation: Clutter.Orientation.VERTICAL});
         this.#backdrop.add_child(this.#box);
 
-        this.#entryIcon = new St.Icon({icon_name: options.icon, style_class: 'ql-entry-icon'});
+        // Search bar
+        const bar = new St.BoxLayout({style_class: 'ql-bar'});
+        this.#back = new St.Button({
+            style_class: 'button ql-back',
+            child: new St.Icon({icon_name: 'go-previous-symbolic'}),
+            visible: false,
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+        this.#back.connect('clicked', () => this.pop());
+        bar.add_child(this.#back);
+        this.#entryIcon = new St.Icon({style_class: 'ql-entry-icon'});
         this.#entry = new St.Entry({
             style_class: 'ql-entry',
-            hint_text: options.placeholder,
             can_focus: true,
             x_expand: true,
             primary_icon: this.#entryIcon,
         });
-        this.#box.add_child(this.#entry);
+        bar.add_child(this.#entry);
+        this.#box.add_child(bar);
 
         const text = this.#entry.clutter_text;
         text.connect('text-changed', () => {
-            if (!this.#secret)
+            if (this.#ignoreChange || this.#prompt)
+                return;
+            if (this.#panelActions) {
+                this.#updatePanel();
+            } else {
+                this.#userSelected = false;
                 this.#update();
+            }
         });
         text.connect('key-press-event', (_actor, event: Clutter.Event) => this.#onKeyPress(event));
 
-        this.#status = new St.Label({style_class: 'ql-status', visible: false});
-        this.#status.clutter_text.line_wrap = true;
-        this.#box.add_child(this.#status);
-
-        this.#list = new St.BoxLayout({
-            style_class: 'ql-list',
-            orientation: Clutter.Orientation.VERTICAL,
-        });
+        // The list, with the action panel floating over its bottom right corner
+        const stack = new St.Widget({layout_manager: new Clutter.BinLayout(), x_expand: true});
+        this.#list = new St.BoxLayout({style_class: 'ql-list', orientation: Clutter.Orientation.VERTICAL});
         this.#scroll = new St.ScrollView({
             style_class: 'ql-scroll',
             hscrollbar_policy: St.PolicyType.NEVER,
             vscrollbar_policy: St.PolicyType.AUTOMATIC,
-            overlay_scrollbars: true,
+            overlay_scrollbars: false,
             child: this.#list,
+            x_expand: true,
         });
-        this.#box.add_child(this.#scroll);
+        stack.add_child(this.#scroll);
+        this.#empty = new St.Label({
+            style_class: 'ql-empty',
+            opacity: DIM,
+            text: 'No results',
+            visible: false,
+            x_align: Clutter.ActorAlign.CENTER,
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+        stack.add_child(this.#empty);
 
-        this.#hints = new St.Label({style_class: 'ql-hints', text: options.hints});
-        this.#hints.clutter_text.ellipsize = Pango.EllipsizeMode.END;
-        this.#box.add_child(this.#hints);
+        this.#panel = new St.BoxLayout({
+            style_class: 'popup-menu-content ql-panel',
+            orientation: Clutter.Orientation.VERTICAL,
+            visible: false,
+            x_expand: true,
+            y_expand: true,
+            x_align: Clutter.ActorAlign.END,
+            y_align: Clutter.ActorAlign.END,
+        });
+        this.#panelList = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL});
+        this.#panel.add_child(this.#panelList);
+        stack.add_child(this.#panel);
+        this.#box.add_child(stack);
+
+        // Footer: view title or status on the left, primary action and the panel hint on the right
+        const footer = new St.BoxLayout({style_class: 'ql-footer'});
+        this.#footerIcon = new St.Icon({style_class: 'ql-footer-icon', y_align: Clutter.ActorAlign.CENTER, opacity: DIM});
+        this.#footerText = new St.Label({style_class: 'ql-footer-text', y_align: Clutter.ActorAlign.CENTER, x_expand: true, opacity: DIM});
+        this.#footerText.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+        this.#primaryLabel = new St.Label({style_class: 'ql-footer-action', y_align: Clutter.ActorAlign.CENTER});
+        this.#primaryKeys = keys([]);
+        this.#actionsHint = new St.BoxLayout({style_class: 'ql-footer-actions', y_align: Clutter.ActorAlign.CENTER});
+        this.#actionsHint.add_child(new St.Widget({style_class: 'popup-separator-menu-item-separator ql-footer-separator', y_align: Clutter.ActorAlign.CENTER}));
+        this.#actionsHint.add_child(new St.Label({style_class: 'ql-footer-action', text: 'Actions', y_align: Clutter.ActorAlign.CENTER}));
+        this.#actionsHint.add_child(keys(['Ctrl', 'K']));
+        for (const child of [this.#footerIcon, this.#footerText, this.#primaryLabel, this.#primaryKeys, this.#actionsHint])
+            footer.add_child(child);
+        this.#box.add_child(footer);
 
         Main.layoutManager.uiGroup.add_child(this.#backdrop);
     }
@@ -152,39 +250,52 @@ export class Launcher<T extends {id: string}> {
         return this.#grab !== null;
     }
 
+    get view(): View | null {
+        return this.#stack.at(-1)?.view ?? null;
+    }
+
     get query(): string {
-        return this.#secret ? this.#secret.savedQuery : this.#entry.get_text();
+        return this.#prompt || this.#panelActions ? this.#savedQuery : this.#entry.get_text();
     }
 
-    get selected(): T | null {
-        return this.#results[this.#selected] ?? null;
+    get selected(): Item | null {
+        return this.#items[this.#selected] ?? null;
     }
 
-    open({query = '', selectId = ''}: {query?: string; selectId?: string} = {}) {
-        if (this.isOpen)
+    /** The open views from the bottom, with their queries; to reopen after stepping aside. */
+    get stack(): Frame[] {
+        const frames = this.#stack.map(f => ({...f}));
+        const top = frames.at(-1);
+        if (top) {
+            top.query = this.query;
+            top.selectId = this.selected?.id;
+        }
+        return frames;
+    }
+
+    /** Opens with a fresh stack: `view`, or several views from `restore`. */
+    open(view: View, {query = '', selectId, restore}: {query?: string; selectId?: string; restore?: Frame[]} = {}) {
+        this.#stack = restore?.length ? restore : [{view, query, selectId}];
+        if (this.isOpen) {
+            this.#showFrame();
             return;
+        }
 
         const monitor = Main.layoutManager.currentMonitor;
-        if (!monitor)
-            return;
         if (!monitor)
             return;
         const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
         const width = Math.min(WIDTH * scale, monitor.width * 0.9);
         this.#box.set_position(
             Math.round(monitor.x + (monitor.width - width) / 2),
-            Math.round(monitor.y + monitor.height * 0.18));
+            Math.round(monitor.y + monitor.height * 0.16));
         this.#box.width = width;
 
         this.#backdrop.show();
         Main.layoutManager.uiGroup.set_child_above_sibling(this.#backdrop, null);
         this.#grab = Main.pushModal(this.#backdrop, {actionMode: Shell.ActionMode.SYSTEM_MODAL});
 
-        this.#entry.set_text(query);
-        this.#update(selectId);
-        this.#entry.grab_key_focus();
-        this.#entry.clutter_text.set_selection(0, query.length);
-
+        this.#showFrame();
         this.#box.opacity = 0;
         this.#box.ease({opacity: 255, duration: 90, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
     }
@@ -194,228 +305,411 @@ export class Launcher<T extends {id: string}> {
         if (!grab)
             return;
         this.#grab = null;
-        this.#resolveSecret(null);
+        this.#closePanel();
+        this.#resolvePrompt(null);
         Main.popModal(grab);
         this.#box.remove_all_transitions();
         this.#backdrop.hide();
+        this.#status = null;
     }
 
-    /** Re-runs the search, e.g. after the data changed. Keeps the selected item. */
+    /** Opens `view` on top of the current one; Esc or Backspace goes back. */
+    push(view: View, query = '') {
+        const current = this.#stack.at(-1);
+        if (current) {
+            current.query = this.#entry.get_text();
+            current.selectId = this.selected?.id;
+        }
+        this.#stack.push({view, query});
+        this.#showFrame();
+    }
+
+    pop() {
+        if (this.#stack.length <= 1) {
+            this.close();
+            return;
+        }
+        this.#stack.pop();
+        this.#showFrame();
+    }
+
+    /** Re-runs the search, e.g. after data arrived. Keeps the selection. */
     refresh() {
-        if (this.isOpen && !this.#secret)
-            this.#update(this.selected?.id);
+        if (this.isOpen && !this.#prompt && !this.#panelActions)
+            this.#update(this.#userSelected ? this.selected?.id : undefined);
     }
 
+    /** Shows a message in the footer instead of the view title. */
     setStatus(text: string | null) {
-        this.#status.text = text ?? '';
-        this.#status.visible = !!text;
+        this.#status = text;
+        this.#updateFooter();
     }
 
-    /**
-     * Turns the search field into a password field until the user presses
-     * Enter (resolves the text) or Esc (resolves null).
-     */
+    /** Turns the search field into a password field until Enter (the text) or Esc (null). */
     askSecret({prompt, description}: {prompt: string; description?: string}): Promise<string | null> {
-        this.#resolveSecret(null);
-
+        this.#resolvePrompt(null);
+        this.#closePanel();
         const standalone = !this.isOpen;
         if (standalone)
-            this.open();
+            this.open({title: 'Quick Launcher', icon: 'dialog-password-symbolic', placeholder: '', search: () => []});
 
-        const savedQuery = this.#entry.get_text();
+        this.#savedQuery = this.#entry.get_text();
         const promise = new Promise<string | null>(resolve => {
-            this.#secret = {resolve, standalone, savedQuery};
+            this.#prompt = {resolve, standalone};
         });
-
         this.#box.add_style_pseudo_class('secret');
         this.#entryIcon.icon_name = 'system-lock-screen-symbolic';
         this.#entry.hint_text = prompt;
         this.#entry.clutter_text.password_char = 0x2022; // •
-        this.#entry.set_text('');
-        this.#entry.grab_key_focus();
+        this.#setText('');
         this.#scroll.hide();
-        this.#hints.text = '⏎ unlock   Esc cancel';
-        this.setStatus(description ?? null);
+        this.#empty.hide();
+        this.#back.hide();
+        this.#entry.grab_key_focus();
+        this.#footerIcon.icon_name = 'system-lock-screen-symbolic';
+        this.#footerText.text = description ?? 'Enter to unlock, Esc to cancel';
+        this.#primaryLabel.text = 'Unlock';
+        this.#primaryLabel.show();
+        setKeys(this.#primaryKeys, ['↵']);
+        this.#actionsHint.hide();
         return promise;
     }
 
-    #resolveSecret(value: string | null) {
-        const request = this.#secret;
-        if (!request)
+    #resolvePrompt(value: string | null) {
+        const prompt = this.#prompt;
+        if (!prompt)
             return;
-        this.#secret = null;
-
+        this.#prompt = null;
         this.#box.remove_style_pseudo_class('secret');
-        this.#entryIcon.icon_name = this.#options.icon;
-        this.#entry.hint_text = this.#options.placeholder;
         this.#entry.clutter_text.password_char = 0;
-        this.#entry.set_text(request.savedQuery);
-        this.#hints.text = this.#options.hints;
-        this.setStatus(null);
-        this.#scroll.show();
-
-        if (request.standalone)
+        this.#setText(this.#savedQuery);
+        if (prompt.standalone)
             this.close();
+        else if (this.isOpen)
+            this.#showFrame(false);
+        prompt.resolve(value);
+    }
 
-        request.resolve(value);
+    #setText(text: string) {
+        this.#ignoreChange = true;
+        this.#entry.set_text(text);
+        this.#ignoreChange = false;
+    }
+
+    #showFrame(resetText = true) {
+        const frame = this.#stack.at(-1);
+        if (!frame)
+            return;
+        this.#closePanel();
+        this.#entryIcon.icon_name = frame.view.icon;
+        this.#entry.hint_text = frame.view.placeholder;
+        this.#back.visible = this.#stack.length > 1;
+        if (resetText)
+            this.#setText(frame.query);
+        this.#userSelected = !!frame.selectId;
+        frame.view.onOpen?.();
+        this.#update(frame.selectId);
+        this.#entry.grab_key_focus();
+        this.#entry.clutter_text.set_selection(0, this.#entry.get_text().length);
     }
 
     #update(selectId?: string) {
-        this.#results = this.#options.search(this.#entry.get_text());
-        this.#visibleRows = Math.min(this.#results.length, MAX_ROWS);
+        const view = this.view;
+        if (!view)
+            return;
+        const query = this.#entry.get_text();
+        const sections = view.search(query).filter(s => s.items.length > 0);
 
-        for (let i = 0; i < this.#visibleRows; i++)
-            this.#fillRow(this.#row(i), this.#options.describe(this.#results[i]));
-        for (let i = this.#visibleRows; i < this.#rows.length; i++)
-            this.#rows[i].actor.hide();
-        this.#scroll.visible = this.#visibleRows > 0;
+        this.#list.remove_all_children();
+        this.#items = [];
+        sections.forEach((section, i) => {
+            if (this.#items.length >= MAX_ROWS)
+                return;
+            if (section.title) {
+                const header = this.#header(i);
+                header.text = section.title;
+                this.#list.add_child(header);
+            }
+            for (const item of section.items.slice(0, MAX_ROWS - this.#items.length)) {
+                const row = this.#row(this.#items.length);
+                this.#fillRow(row, item);
+                this.#list.add_child(row.actor);
+                this.#items.push(item);
+            }
+        });
 
-        const index = selectId ? this.#results.findIndex(r => r.id === selectId) : -1;
-        this.#select(Math.max(0, index));
+        this.#scroll.visible = this.#items.length > 0;
+        this.#empty.visible = this.#items.length === 0 && query !== '';
+
+        const index = selectId ? this.#items.findIndex(item => item.id === selectId) : -1;
+        this.#select(Math.max(0, index), index > 0);
+    }
+
+    #header(index: number): St.Label {
+        this.#headers[index] ??= new St.Label({style_class: 'ql-section', opacity: DIM});
+        return this.#headers[index];
     }
 
     /** Rows are created once and reused, so typing doesn't rebuild actors. */
     #row(index: number): Row {
-        let row = this.#rows[index];
-        if (row)
-            return row;
+        const existing = this.#rows[index];
+        if (existing)
+            return existing;
 
-        const actor = new St.BoxLayout({style_class: 'ql-row', reactive: true, track_hover: true});
-        const icon = new St.Icon({style_class: 'ql-row-icon', y_align: Clutter.ActorAlign.CENTER});
-        const labels = new St.BoxLayout({
-            orientation: Clutter.Orientation.VERTICAL,
-            x_expand: true,
-            y_align: Clutter.ActorAlign.CENTER,
-        });
-        const title = new St.Label({style_class: 'ql-row-title'});
-        const subtitle = new St.Label({style_class: 'ql-row-subtitle'});
+        const actor = new St.BoxLayout({style_class: 'popup-menu-item ql-row', reactive: true, track_hover: true});
+        const icon = new St.Icon({style_class: 'ql-row-icon', x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.CENTER});
+        const glyph = new St.Label({style_class: 'ql-row-glyph', visible: false, x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.CENTER});
+        glyph.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;
+        const iconStack = new St.Widget({layout_manager: new Clutter.BinLayout()});
+        iconStack.add_child(icon);
+        iconStack.add_child(glyph);
+        const iconBox = new St.Bin({style_class: 'ql-icon-box', y_align: Clutter.ActorAlign.CENTER, child: iconStack});
+
+        const labels = new St.BoxLayout({style_class: 'ql-row-labels', x_expand: true, y_align: Clutter.ActorAlign.CENTER});
+        const title = new St.Label({style_class: 'ql-row-title', y_align: Clutter.ActorAlign.CENTER});
+        const subtitle = new St.Label({style_class: 'ql-row-subtitle', y_align: Clutter.ActorAlign.CENTER, x_expand: true});
         title.clutter_text.ellipsize = Pango.EllipsizeMode.END;
         subtitle.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+        // Dimmed with opacity rather than colors, so light and dark themes both work.
+        subtitle.opacity = DIM;
         labels.add_child(title);
         labels.add_child(subtitle);
 
-        const trailing = new St.Label({style_class: 'ql-row-trailing', y_align: Clutter.ActorAlign.CENTER});
-        const badge = new St.Label({y_align: Clutter.ActorAlign.CENTER});
-        for (const child of [icon, labels, trailing, badge])
+        const accessory = new St.Label({style_class: 'ql-row-accessory', y_align: Clutter.ActorAlign.CENTER, opacity: DIM});
+        const source = new St.Bin({y_align: Clutter.ActorAlign.CENTER, child: new St.Icon({style_class: 'ql-source-icon'})});
+        for (const child of [iconBox, labels, accessory, source])
             actor.add_child(child);
 
         actor.connect('button-release-event', (_actor, event: Clutter.Event) => {
+            this.#userSelected = true;
             this.#select(index);
-            this.#activate({enter: true, char: '', ...modifiers(event)});
+            this.#runShortcut({key: 'return', ...modifiers(event)});
             return Clutter.EVENT_STOP;
         });
 
-        row = {actor, icon, title, subtitle, badge, trailing, iconStyle: null};
+        const row = {actor, labels, iconBox, icon, glyph, title, subtitle, accessory, source, iconStyle: null};
         this.#rows.push(row);
-        this.#list.add_child(actor);
         return row;
     }
 
-    #fillRow(row: Row, content: RowContent) {
-        row.icon.icon_name = content.icon;
-        row.iconStyle = content.iconStyle ?? null;
-        row.icon.style = row.actor.has_style_pseudo_class('selected') ? null : row.iconStyle;
-        row.title.text = content.title;
-        row.subtitle.text = content.subtitle ?? '';
-        row.subtitle.visible = !!content.subtitle;
-        row.trailing.text = content.trailing ?? '';
-        row.trailing.visible = !!content.trailing;
-        row.badge.text = content.badge?.text ?? '';
-        row.badge.style_class = `ql-badge ${content.badge?.styleClass ?? ''}`;
-        row.badge.style = content.badge?.style ?? null;
-        row.badge.visible = !!content.badge;
-        if (content.dim)
-            row.actor.add_style_class_name('ql-row-dim');
+    #fillRow(row: Row, item: Item) {
+        const {icon} = item;
+        const tile = 'name' in icon && icon.color ? icon.color : null;
+        row.glyph.visible = 'text' in icon;
+        row.icon.visible = !('text' in icon);
+        row.iconBox.style = tile ? `background-color: ${tile};` : null;
+        toggleClass(row.iconBox, 'ql-icon-tile', !!tile);
+        if ('text' in icon)
+            row.glyph.text = icon.text;
+        else if ('gicon' in icon)
+            row.icon.gicon = icon.gicon;
         else
-            row.actor.remove_style_class_name('ql-row-dim');
-        row.actor.show();
+            row.icon.icon_name = icon.name;
+        row.iconStyle = 'name' in icon && !icon.color ? icon.style ?? null : null;
+        row.icon.style = row.actor.has_style_pseudo_class('selected') ? null : row.iconStyle;
+
+        row.title.text = item.title;
+        row.subtitle.text = item.subtitle ?? '';
+        row.subtitle.visible = !!item.subtitle;
+        row.accessory.text = item.accessory ?? '';
+        row.accessory.visible = !!item.accessory;
+        row.source.visible = !!item.source;
+        if (item.source) {
+            row.source.style_class = `ql-source ${item.source.styleClass ?? ''}`;
+            (row.source.child as St.Icon).gicon = item.source.icon;
+        }
+        toggleClass(row.actor, 'ql-row-answer', !!item.answer);
+        toggleClass(row.actor, 'ql-row-dim', !!item.dim);
+        // An answer stacks the result above the expression.
+        row.labels.orientation = item.answer ? Clutter.Orientation.VERTICAL : Clutter.Orientation.HORIZONTAL;
     }
 
-    #select(index: number) {
+    #select(index: number, scroll = true) {
         const previous = this.#rows[this.#selected];
         if (previous) {
             previous.actor.remove_style_pseudo_class('selected');
             previous.icon.style = previous.iconStyle;
         }
-        if (this.#visibleRows === 0) {
-            this.#selected = 0;
-            return;
+        this.#selected = this.#items.length ? Math.max(0, Math.min(index, this.#items.length - 1)) : 0;
+        const row = this.#items.length ? this.#rows[this.#selected] : null;
+        if (row) {
+            row.actor.add_style_pseudo_class('selected');
+            row.icon.style = null;
+            if (scroll)
+                ensureActorVisibleInScrollView(this.#scroll, row.actor);
+            else
+                this.#scroll.vadjustment.value = 0;
         }
-        this.#selected = Math.max(0, Math.min(index, this.#visibleRows - 1));
-        const row = this.#rows[this.#selected];
-        row.actor.add_style_pseudo_class('selected');
-        row.icon.style = null;
-        ensureActorVisibleInScrollView(this.#scroll, row.actor);
+        this.#updateFooter();
     }
 
-    #activate(keys: Keys): boolean {
-        const item = this.selected;
-        const action = item && this.#options.actionFor(item, keys);
-        if (!item || !action)
+    #updateFooter() {
+        if (this.#prompt)
+            return;
+        const view = this.view;
+        const primary = this.selected?.actions[0];
+        this.#footerIcon.icon_name = this.#status ? 'dialog-information-symbolic' : view?.icon ?? 'system-search-symbolic';
+        this.#footerText.text = this.#status ?? view?.title ?? '';
+        this.#primaryLabel.text = primary?.title ?? '';
+        this.#primaryLabel.visible = !!primary;
+        setKeys(this.#primaryKeys, primary ? ['↵'] : []);
+        this.#actionsHint.visible = this.#allActions().length > 1;
+    }
+
+    #allActions(): Action[] {
+        return [...this.selected?.actions ?? [], ...this.view?.actions?.() ?? []];
+    }
+
+    /** Runs the action whose shortcut matches; plain Enter is the primary action. */
+    #runShortcut(keys: Shortcut): boolean {
+        const plainEnter = keys.key === 'return' && !keys.ctrl && !keys.shift && !keys.alt;
+        const action = plainEnter
+            ? this.selected?.actions[0]
+            : this.#allActions().find(a => a.shortcut && matches(a.shortcut, keys));
+        if (!action)
             return false;
-        this.#options.onActivate(item, action);
+        action.run();
         return true;
     }
+
+    // --- Action panel ---
+
+    #openPanel() {
+        const actions = this.#allActions();
+        if (actions.length === 0)
+            return;
+        this.#savedQuery = this.#entry.get_text();
+        this.#panelActions = actions;
+        this.#entry.hint_text = 'Search actions…';
+        this.#setText('');
+        this.#panel.show();
+        this.#updatePanel();
+    }
+
+    #closePanel() {
+        if (!this.#panelActions)
+            return;
+        this.#panelActions = null;
+        this.#panel.hide();
+        this.#entry.hint_text = this.view?.placeholder ?? '';
+        this.#setText(this.#savedQuery);
+    }
+
+    #visiblePanelActions(): Action[] {
+        const filter = this.#entry.get_text().trim().toLowerCase();
+        return (this.#panelActions ?? []).filter(a => a.title.toLowerCase().includes(filter));
+    }
+
+    #updatePanel() {
+        const actions = this.#visiblePanelActions();
+        const primary = this.selected?.actions[0];
+        this.#panelList.remove_all_children();
+        actions.forEach((action, i) => {
+            this.#panelRows[i] ??= this.#panelRow(i);
+            const row = this.#panelRows[i];
+            const [icon, label, shortcut] = row.get_children() as [St.Icon, St.Label, St.BoxLayout];
+            icon.icon_name = action.icon ?? 'system-run-symbolic';
+            label.text = action.title;
+            setKeys(shortcut, action.shortcut ? shortcutLabel(action.shortcut) : action === primary ? ['↵'] : []);
+            toggleClass(row, 'ql-panel-destructive', !!action.destructive);
+            this.#panelList.add_child(row);
+        });
+        this.#selectPanel(0);
+    }
+
+    #panelRow(index: number): St.BoxLayout {
+        const row = new St.BoxLayout({style_class: 'popup-menu-item ql-panel-row', reactive: true, track_hover: true});
+        row.add_child(new St.Icon({style_class: 'ql-panel-icon', y_align: Clutter.ActorAlign.CENTER}));
+        row.add_child(new St.Label({style_class: 'ql-panel-title', x_expand: true, y_align: Clutter.ActorAlign.CENTER}));
+        row.add_child(keys([]));
+        row.connect('button-release-event', () => {
+            this.#selectPanel(index);
+            this.#runPanel();
+            return Clutter.EVENT_STOP;
+        });
+        return row;
+    }
+
+    #selectPanel(index: number) {
+        const count = this.#visiblePanelActions().length;
+        this.#panelRows[this.#panelSelected]?.remove_style_pseudo_class('selected');
+        this.#panelSelected = count ? Math.max(0, Math.min(index, count - 1)) : 0;
+        if (count)
+            this.#panelRows[this.#panelSelected].add_style_pseudo_class('selected');
+    }
+
+    #runPanel() {
+        const action = this.#visiblePanelActions()[this.#panelSelected];
+        this.#closePanel();
+        action?.run();
+    }
+
+    // --- Keys ---
 
     #onKeyPress(event: Clutter.Event): boolean {
         const symbol = event.get_key_symbol();
         const mods = modifiers(event);
-        const isEnter = symbol === Clutter.KEY_Return || symbol === Clutter.KEY_KP_Enter ||
-            symbol === Clutter.KEY_ISO_Enter;
+        const isEnter = symbol === Clutter.KEY_Return || symbol === Clutter.KEY_KP_Enter || symbol === Clutter.KEY_ISO_Enter;
+        const char = String.fromCodePoint(Clutter.keysym_to_unicode(symbol) || 0).toLowerCase();
 
-        if (this.#secret) {
-            if (symbol === Clutter.KEY_Escape) {
-                this.#resolveSecret(null);
-                return Clutter.EVENT_STOP;
-            }
-            if (isEnter) {
-                this.#resolveSecret(this.#entry.get_text());
-                return Clutter.EVENT_STOP;
-            }
-            return Clutter.EVENT_PROPAGATE;
+        if (this.#prompt) {
+            if (symbol === Clutter.KEY_Escape)
+                this.#resolvePrompt(null);
+            else if (isEnter)
+                this.#resolvePrompt(this.#entry.get_text());
+            else
+                return Clutter.EVENT_PROPAGATE;
+            return Clutter.EVENT_STOP;
+        }
+
+        if (this.#panelActions) {
+            if (symbol === Clutter.KEY_Escape || (mods.ctrl && char === 'k'))
+                this.#closePanel();
+            else if (isEnter)
+                this.#runPanel();
+            else if (symbol === Clutter.KEY_Up || (mods.ctrl && char === 'p'))
+                this.#selectPanel(this.#panelSelected - 1);
+            else if (symbol === Clutter.KEY_Down || symbol === Clutter.KEY_Tab || (mods.ctrl && char === 'n'))
+                this.#selectPanel(this.#panelSelected + 1);
+            else
+                return Clutter.EVENT_PROPAGATE;
+            return Clutter.EVENT_STOP;
         }
 
         if (isEnter) {
-            this.#activate({enter: true, char: '', ...mods});
+            this.#runShortcut({key: 'return', ...mods});
+            return Clutter.EVENT_STOP;
+        }
+        if (mods.ctrl && char === 'k') {
+            this.#openPanel();
             return Clutter.EVENT_STOP;
         }
 
         const moves: Partial<Record<number, number>> = {
-            [Clutter.KEY_Up]: -1,
-            [Clutter.KEY_KP_Up]: -1,
-            [Clutter.KEY_ISO_Left_Tab]: -1,
-            [Clutter.KEY_Down]: 1,
-            [Clutter.KEY_KP_Down]: 1,
-            [Clutter.KEY_Tab]: 1,
-            [Clutter.KEY_Page_Up]: -8,
-            [Clutter.KEY_Page_Down]: 8,
+            [Clutter.KEY_Up]: -1, [Clutter.KEY_KP_Up]: -1, [Clutter.KEY_ISO_Left_Tab]: -1,
+            [Clutter.KEY_Down]: 1, [Clutter.KEY_KP_Down]: 1, [Clutter.KEY_Tab]: 1,
+            [Clutter.KEY_Page_Up]: -8, [Clutter.KEY_Page_Down]: 8,
         };
-        const move = moves[symbol];
+        const move = moves[symbol] ?? (mods.ctrl && char === 'p' ? -1 : mods.ctrl && char === 'n' ? 1 : undefined);
         if (move !== undefined) {
+            this.#userSelected = true;
             this.#select(this.#selected + move);
             return Clutter.EVENT_STOP;
         }
 
         if (symbol === Clutter.KEY_Escape) {
-            this.close();
+            this.pop();
+            return Clutter.EVENT_STOP;
+        }
+        if (symbol === Clutter.KEY_BackSpace && this.#entry.get_text() === '' && this.#stack.length > 1) {
+            this.pop();
             return Clutter.EVENT_STOP;
         }
 
-        const char = String.fromCodePoint(Clutter.keysym_to_unicode(symbol) || 0).toLowerCase();
-        if (mods.ctrl && !mods.alt) {
-            const ctrlMoves: Record<string, number> = {p: -1, k: -1, n: 1, j: 1};
-            if (char in ctrlMoves) {
-                this.#select(this.#selected + ctrlMoves[char]);
-                return Clutter.EVENT_STOP;
-            }
-            const command = this.#options.commands?.[char];
-            if (command) {
-                command();
-                return Clutter.EVENT_STOP;
-            }
-        }
-
-        if ((mods.ctrl || mods.alt) && this.#activate({enter: false, char, ...mods}))
+        // Ctrl+C with text selected in the search field copies that text.
+        if (mods.ctrl && char === 'c' && this.#entry.clutter_text.get_selection())
+            return Clutter.EVENT_PROPAGATE;
+        if ((mods.ctrl || mods.alt) && char && this.#runShortcut({key: char, ...mods}))
             return Clutter.EVENT_STOP;
         return Clutter.EVENT_PROPAGATE;
     }
@@ -424,6 +718,31 @@ export class Launcher<T extends {id: string}> {
         this.close();
         this.#backdrop.destroy();
     }
+}
+
+function keys(labels: string[]): St.BoxLayout {
+    const box = new St.BoxLayout({style_class: 'ql-keys', y_align: Clutter.ActorAlign.CENTER});
+    setKeys(box, labels);
+    return box;
+}
+
+function setKeys(box: St.BoxLayout, labels: string[]) {
+    box.destroy_all_children();
+    for (const label of labels)
+        box.add_child(new St.Label({style_class: 'ql-kbd', text: label, y_align: Clutter.ActorAlign.CENTER}));
+    box.visible = labels.length > 0;
+}
+
+function toggleClass(actor: St.Widget, name: string, on: boolean) {
+    if (on)
+        actor.add_style_class_name(name);
+    else
+        actor.remove_style_class_name(name);
+}
+
+function matches(shortcut: Shortcut, keys: Shortcut): boolean {
+    return shortcut.key === keys.key && !!shortcut.ctrl === !!keys.ctrl &&
+        !!shortcut.shift === !!keys.shift && !!shortcut.alt === !!keys.alt;
 }
 
 function modifiers(event: Clutter.Event) {

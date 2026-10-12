@@ -36,6 +36,7 @@ gsettings set org.gnome.shell disable-user-extensions false
 gsettings set org.gnome.shell enabled-extensions "['$UUID', 'screenshot-driver@quick-launcher']"
 gsettings set org.gnome.desktop.interface scaling-factor 2
 gsettings set org.gnome.desktop.interface accent-color teal
+gsettings set org.gnome.desktop.interface color-scheme "${QL_SCHEME:-prefer-dark}"
 set_ql() { gsettings --schemadir "$ROOT/dist/schemas" set org.gnome.shell.extensions.quick-launcher "$@"; }
 set_ql rbw-path "$HERE/fixtures/rbw"
 set_ql op-path "$HERE/fixtures/op"
@@ -66,29 +67,52 @@ driver HideOverview
 sleep 2
 mkdir -p "$OUT"
 
-# Bitwarden starts unlocked, 1Password locked.
+clear_query() { keys Control_L a; keys BackSpace; sleep 0.3; }
+
+# Bitwarden starts unlocked, 1Password locked; a few recently used items.
 touch "$QL_FIXTURE_STATE/rbw-unlocked"
+set_ql recent "['password:bitwarden:b1', 'emoji:🚀', 'password:bitwarden:b2']"
 
 keys Control_L Shift_L Return
-sleep 1.5
-keys Return                      # "Unlock 1Password" is the first row
+sleep 2
+shot root
+
+type_text github
+sleep 0.5
+shot search
+keys Control_L k
+sleep 0.4
+shot actions
+keys Escape
+clear_query
+
+type_text "2 min in year"
+sleep 0.4
+shot calculator
+clear_query
+type_text "time in tokyo"
+sleep 0.4
+shot timezone
+clear_query
+
+type_text standup
+sleep 0.4
+shot clockify
+clear_query
+
+type_text ":rocket"
+sleep 0.4
+shot emoji
+clear_query
+
+type_text "unlock 1pass"
+sleep 0.4
+keys Return
 sleep 0.8
 shot unlock
 type_text hunter2
 keys Return
 sleep 1.5
-type_text github
-sleep 0.4
-shot search
-for _ in $(seq 6); do keys BackSpace; done
-keys Down; keys Down; keys Down
-sleep 0.4
-shot passwords
-keys Escape
-
-keys Shift_L Alt_L Return
-sleep 2
-shot clockify
 keys Escape
 
 echo "--- shell log (extension-relevant lines) ---"

@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Quick Launcher — Bitwarden, 1Password and Clockify from one GNOME shortcut</title>
-<meta name="description" content="A GNOME Shell extension with Spotlight-style launchers: search Bitwarden and 1Password in one list, unlock both right there, copy or type passwords on Wayland, and start Clockify timers from your recent entries.">
+<title>Quick Launcher — a Raycast-style launcher for GNOME: passwords, Clockify, calculator</title>
+<meta name="description" content="A Raycast-style launcher for GNOME Shell: search Bitwarden and 1Password in one list, unlock both right there, copy or type passwords on Wayland, start Clockify timers, calculate with units, currencies, dates and time zones, find emoji and run system commands.">
 <link rel="canonical" href="https://thesalaty.github.io/quick-launcher/">
 <meta property="og:type" content="website">
-<meta property="og:title" content="Quick Launcher — Bitwarden, 1Password and Clockify from one GNOME shortcut">
-<meta property="og:description" content="GNOME Shell extension: one search over Bitwarden and 1Password, unlock in place, copy or type passwords, start Clockify timers.">
-<meta property="og:image" content="https://thesalaty.github.io/quick-launcher/passwords.png">
+<meta property="og:title" content="Quick Launcher — a Raycast-style launcher for GNOME">
+<meta property="og:description" content="GNOME Shell extension: one search over Bitwarden and 1Password, Clockify timers, a calculator with units, dates and time zones, emoji and system commands.">
+<meta property="og:image" content="https://thesalaty.github.io/quick-launcher/root.png">
 <meta property="og:url" content="https://thesalaty.github.io/quick-launcher/">
 <meta name="twitter:card" content="summary_large_image">
 <script type="application/ld+json">
@@ -17,10 +17,10 @@
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
   "name": "Quick Launcher",
-  "alternateName": "Bitwarden and 1Password launcher for GNOME Shell",
+  "alternateName": "Raycast-style launcher for GNOME Shell",
   "applicationCategory": "UtilitiesApplication",
   "operatingSystem": "Linux, GNOME Shell 48-50",
-  "description": "A GNOME Shell extension with Spotlight-style launchers: one search over Bitwarden (rbw) and 1Password (op), unlocking in place, copying or typing passwords, and starting Clockify timers from recent entries.",
+  "description": "A Raycast-style GNOME Shell launcher: one search over Bitwarden (rbw) and 1Password (op), Clockify timers, a calculator with units, currencies, dates and time zones, emoji and system commands.",
   "softwareVersion": "2.0.0",
   "url": "https://thesalaty.github.io/quick-launcher/",
   "downloadUrl": "https://github.com/TheSalaty/quick-launcher/releases/latest",
@@ -81,38 +81,40 @@
 </head>
 <body>
 
-<h1>Quick Launcher <span class="sub">Bitwarden, 1Password and Clockify from one GNOME shortcut</span></h1>
-<p class="lede">A GNOME Shell extension for people who keep work passwords in <strong>Bitwarden</strong>
-and private ones in <strong>1Password</strong>, or the other way round. One search finds
-entries in both, and every row shows which vault it is from.</p>
+<h1>Quick Launcher <span class="sub">A Raycast-style launcher for GNOME: passwords, Clockify, calculator</span></h1>
+<p class="lede">One shortcut, <kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>Enter</kbd>, and one search over your
+<strong>Bitwarden</strong> and <strong>1Password</strong> vaults, your recent <strong>Clockify</strong>
+entries and a set of commands. Anything that looks like a calculation, a unit, a date or a time zone is
+answered as you type.</p>
 
-<p>Press <kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>Enter</kbd>, type a few letters, press <kbd>Enter</kbd>:
-the password is on the clipboard and is cleared again after 30 seconds. <kbd>Shift</kbd> <kbd>Enter</kbd>
-types it into the focused window instead. That works on Wayland without ydotool or a uinput
-daemon.</p>
+<p>It follows the shell theme in light and dark and with your accent color, and blurs the desktop behind it.
+No apps are launched and there is no clipboard history. It is meant for the things a general app launcher
+doesn't do well.</p>
 
-<p><img src="passwords.png" alt="Quick Launcher listing Bitwarden and 1Password entries with a badge for each source" width="560"></p>
+<p><img src="root.png" alt="Quick Launcher with recent items and commands" width="600"></p>
 
 <h2>What it does</h2>
 <ul>
-  <li><strong>One list, two vaults</strong>: Bitwarden through <a href="https://github.com/doy/rbw">rbw</a>,
-    1Password through the <a href="https://developer.1password.com/docs/cli/">op CLI</a>. Each
-    row shows its source, along with the username and the folder or 1Password vault.</li>
-  <li><strong>Unlock in place</strong>: a locked vault is a row. Press <kbd>Enter</kbd> and type
-    the master password into the launcher, or let the 1Password app ask. Bitwarden's prompt can
-    come to the launcher as well, through a small pinentry bridge.</li>
-  <li><strong>Copy or type</strong>: passwords, usernames and TOTP codes, or the whole login
-    (username, Tab, password, Enter).</li>
-  <li><strong>Fast</strong>: the popup opens with what it already has and refreshes in the
-    background. Only names and usernames stay in memory. Passwords are fetched when you use
-    them.</li>
-  <li><strong>Clockify</strong>: a second shortcut lists your recent time entries with when you
-    last worked on them. Enter restarts one; the running timer stops at the same second.
-    <code>@project</code> and <code>#tag</code> work in new entries.</li>
+  <li><strong>Passwords from both vaults</strong>: Bitwarden through <a href="https://github.com/doy/rbw">rbw</a>,
+    1Password through the <a href="https://developer.1password.com/docs/cli/">op CLI</a>. Each row carries the
+    vault's logo. <kbd>Enter</kbd> copies the password, <kbd>Ctrl</kbd> <kbd>C</kbd> the username,
+    <kbd>Shift</kbd> <kbd>Enter</kbd> types it, even on Wayland.</li>
+  <li><strong>Unlock in place</strong>: a locked vault is a row. Type the master password into the
+    launcher, or let the 1Password app ask.</li>
+  <li><strong>Calculator</strong>: math and percentages, every unit into every other (<code>2 min in year</code>,
+    <code>30 mpg in l/100km</code>), currencies at the ECB's daily rates, dates and countdowns
+    (<code>days until christmas</code>, <code>kw</code>), Unix timestamps and time zones
+    (<code>5pm berlin in tokyo</code>). English and German both work.</li>
+  <li><strong>Clockify</strong>: restart a recent entry or start a new one with <code>@project</code> and
+    <code>#tag</code>; the running timer stops at the same second.</li>
+  <li><strong>Emoji and system commands</strong>: <code>:rocket</code> copies 🚀, and lock, suspend, power off,
+    dark mode, Do Not Disturb and Night Light are a few keystrokes away.</li>
+  <li><strong>Every action at hand</strong>: <kbd>Ctrl</kbd> <kbd>K</kbd> lists all actions of the selected item
+    with their shortcuts.</li>
 </ul>
 
-<p><img src="unlock.png" alt="Typing the 1Password master password into the launcher" width="560"></p>
-<p><img src="clockify.png" alt="Recent Clockify entries with the running timer on top" width="560"></p>
+<p><img src="calculator.png" alt="2 min in year answered as 3.8 × 10⁻⁶ years" width="600"></p>
+<p><img src="actions.png" alt="The action panel for a password" width="600"></p>
 
 <h2>Install</h2>
 <p>Needs GNOME Shell 48, 49 or 50, and <code>rbw</code> and/or <code>op</code> set up. Download the zip from the
@@ -122,15 +124,15 @@ daemon.</p>
 <pre><code>gnome-extensions install --force quick-launcher@julian.falcondev.de.shell-extension.zip</code></pre>
 <p>Log out and back in (Wayland cannot reload the shell in place), and enable it:</p>
 <pre><code>gnome-extensions enable quick-launcher@julian.falcondev.de</code></pre>
-<p class="note">Shortcuts, vaults, the 1Password unlock method and the Clockify API key are in
+<p class="note">The shortcut, vaults, the 1Password unlock method, the default currency and the Clockify API key are in
 <code>gnome-extensions prefs quick-launcher@julian.falcondev.de</code>.</p>
 
 <footer>
 Source, keys and settings:
 <a href="https://github.com/TheSalaty/quick-launcher">github.com/TheSalaty/quick-launcher</a>. MIT licensed.
 <br>
-An independent project, not affiliated with or endorsed by Bitwarden, 1Password (AgileBits) or
-Clockify (CAKE.com). The names are used only to say what the extension works with.
+An independent project, not affiliated with or endorsed by Bitwarden, 1Password (AgileBits),
+Clockify (CAKE.com) or Raycast. The names are used only to say what the extension works with.
 </footer>
 
 </body>

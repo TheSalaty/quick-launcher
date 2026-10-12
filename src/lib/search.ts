@@ -32,14 +32,15 @@ export class SearchIndex<T> {
         }));
     }
 
-    search(query: string): T[] {
+    /** With `all`, only items matching every word ("2 min in year" shouldn't find "Infra"). */
+    search(query: string, {all = false} = {}): T[] {
         const tokens = normalize(query).split(/\s+/).filter(Boolean);
         if (tokens.length === 0)
             return this.items.slice();
 
         return this.#indexed
             .map((entry, index) => ({index, item: entry.item, ...score(entry, tokens)}))
-            .filter(r => r.matched > 0)
+            .filter(r => all ? r.matched === tokens.length : r.matched > 0)
             .sort((a, b) =>
                 b.matched - a.matched ||
                 b.score - a.score ||

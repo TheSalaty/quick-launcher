@@ -6,24 +6,20 @@ import Gtk from 'gi://Gtk';
 
 import {ExtensionPreferences} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 
+import {CURRENCIES} from './calc/units.ts';
 import {findProgram, run} from './lib/subprocess.ts';
 
 export default class QuickLauncherPreferences extends ExtensionPreferences {
     override async fillPreferencesWindow(window: Adw.PreferencesWindow) {
         const settings = this.getSettings();
         window.set_default_size(640, 760);
+        window.add(generalPage(settings));
         window.add(this.#passwordsPage(settings));
         window.add(clockifyPage(settings));
     }
 
     #passwordsPage(settings: Gio.Settings): Adw.PreferencesPage {
         const page = new Adw.PreferencesPage({title: 'Passwords', icon_name: 'dialog-password-symbolic'});
-
-        const general = new Adw.PreferencesGroup({
-            description: 'One search over all enabled password managers. Locked vaults show up as a row you can unlock right there.',
-        });
-        general.add(shortcutRow(settings, 'shortcut', 'Open launcher'));
-        page.add(general);
 
         const bitwarden = new Adw.PreferencesGroup({
             title: 'Bitwarden',
@@ -152,13 +148,46 @@ exec ${q(fallback)} "$@"
     }
 }
 
+function generalPage(settings: Gio.Settings): Adw.PreferencesPage {
+    const page = new Adw.PreferencesPage({title: 'General', icon_name: 'system-search-symbolic'});
+
+    const launcher = new Adw.PreferencesGroup({
+        description: 'One launcher for passwords, Clockify, the calculator, emoji and system commands. Start typing to search everything at once.',
+    });
+    launcher.add(shortcutRow(settings, 'shortcut', 'Open launcher'));
+    page.add(launcher);
+
+    const calculator = new Adw.PreferencesGroup({
+        title: 'Calculator',
+        description: 'Exchange rates are the European Central Bank\'s daily reference rates, fetched at most twice a day',
+    });
+    const currency = new Adw.ComboRow({
+        title: 'Default currency',
+        subtitle: 'Amounts like “100 usd” are converted to it',
+        model: Gtk.StringList.new(CURRENCIES),
+        selected: Math.max(0, CURRENCIES.indexOf(settings.get_string('default-currency'))),
+    });
+    currency.connect('notify::selected', () => settings.set_string('default-currency', CURRENCIES[currency.selected]));
+    calculator.add(currency);
+    page.add(calculator);
+
+    const history = new Adw.PreferencesGroup();
+    const clear = new Adw.ActionRow({title: 'Recently used items', subtitle: 'Shown when the launcher opens'});
+    const button = new Gtk.Button({label: 'Clear', valign: Gtk.Align.CENTER});
+    button.connect('clicked', () => settings.set_strv('recent', []));
+    clear.add_suffix(button);
+    history.add(clear);
+    page.add(history);
+    return page;
+}
+
 function clockifyPage(settings: Gio.Settings): Adw.PreferencesPage {
     const page = new Adw.PreferencesPage({title: 'Clockify', icon_name: 'alarm-symbolic'});
 
     const general = new Adw.PreferencesGroup({
         description: 'Start timers from your recent time entries, or a new one with @project and #tags',
     });
-    general.add(shortcutRow(settings, 'clockify-shortcut', 'Open launcher'));
+    general.add(shortcutRow(settings, 'clockify-shortcut', 'Open Clockify directly'));
     page.add(general);
 
     const api = new Adw.PreferencesGroup({
