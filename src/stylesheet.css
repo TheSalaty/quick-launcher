@@ -1,0 +1,82 @@
+.bwl-box {
+  background-color: rgba(30, 30, 34, 0.97);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 18px;
+  padding: 10px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+  spacing: 6px;
+}
+
+.bwl-entry {
+  font-size: 18pt;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background-color: rgba(255, 255, 255, 0.06);
+  border: none;
+  box-shadow: none;
+  color: #fff;
+  selection-background-color: rgba(53, 132, 228, 0.6);
+  selected-color: #fff;
+}
+
+.bwl-entry:focus {
+  box-shadow: none;
+}
+
+.bwl-entry-icon {
+  icon-size: 20px;
+  padding-right: 10px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.bwl-status {
+  padding: 4px 14px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.bwl-scroll {
+  max-height: 440px;
+}
+
+.bwl-row {
+  padding: 7px 12px;
+  border-radius: 10px;
+  spacing: 12px;
+}
+
+.bwl-row:hover {
+  background-color: rgba(255, 255, 255, 0.06);
+}
+
+.bwl-row:selected {
+  background-color: #3584e4;
+}
+
+.bwl-row-icon {
+  icon-size: 20px;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.bwl-row:selected .bwl-row-icon {
+  color: #fff;
+}
+
+.bwl-row-name {
+  font-weight: bold;
+  color: #fff;
+}
+
+.bwl-row-subtitle {
+  font-size: 9pt;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.bwl-row:selected .bwl-row-subtitle {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.bwl-hints {
+  padding: 4px 12px 2px;
+  font-size: 8.5pt;
+  color: rgba(255, 255, 255, 0.45);
+}
