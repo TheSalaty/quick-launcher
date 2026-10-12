@@ -1,0 +1,25 @@
+#!/bin/bash
+# Fake rbw for tools/shoot.sh. State lives in $QL_FIXTURE_STATE.
+S=${QL_FIXTURE_STATE:?}
+here=$(dirname "$0")
+case "$1" in
+  unlocked) [ -f "$S/rbw-unlocked" ] ;;
+  unlock)
+    pe=$(cat "$S/rbw-pinentry" 2>/dev/null)
+    if [ -n "$pe" ] && [ "$pe" != pinentry ]; then
+      pin=$(printf 'SETTITLE rbw\nSETPROMPT Master Password\nSETDESC Unlock the local database for julian@falcondev.de\nGETPIN\n' |
+        "$pe" --timeout 0 | sed -n 's/^D //p')
+      [ "$pin" = hunter2 ] || { echo "rbw unlock: pinentry cancelled" >&2; exit 1; }
+    fi
+    touch "$S/rbw-unlocked" ;;
+  lock) rm -f "$S/rbw-unlocked" ;;
+  sync) ;;
+  list) [ -f "$S/rbw-unlocked" ] && cat "$here/rbw-list.json" ;;
+  get) echo "secret-$2" ;;
+  code) echo 123456 ;;
+  config)
+    case "$2" in
+      show) echo "{\"pinentry\":\"$(cat "$S/rbw-pinentry" 2>/dev/null || echo pinentry)\"}" ;;
+      set) echo "$4" > "$S/rbw-pinentry" ;;
+    esac ;;
+esac

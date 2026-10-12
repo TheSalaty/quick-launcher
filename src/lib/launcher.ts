@@ -230,7 +230,7 @@ export class Launcher<T extends {id: string}> {
         this.#box.add_style_pseudo_class('secret');
         this.#entryIcon.icon_name = 'system-lock-screen-symbolic';
         this.#entry.hint_text = prompt;
-        this.#entry.clutter_text.password_char = 0x25cf; // ●
+        this.#entry.clutter_text.password_char = 0x2022; // •
         this.#entry.set_text('');
         this.#entry.grab_key_focus();
         this.#scroll.hide();
