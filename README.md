@@ -65,8 +65,14 @@ Log out and back in before enabling the extension. Run `make pack` to build an i
 
 ## Using it
 
-When the launcher opens, recently used items and all commands are listed. Typing searches
-everything at once and groups the results.
+When the launcher opens, your recently used passwords, entries and emoji are listed first, then
+all commands. Typing searches everything at once and groups the results: a calculator answer on
+top, then passwords, Clockify entries and commands. Only items matching every word you typed are
+shown. Below them, *Use “…” with* starts a timer with the text or searches passwords or emoji
+for it.
+
+The launcher uses the shell theme, so it follows light and dark style and your accent color, and
+the desktop behind it is blurred.
 
 <p align="center">
   <img src="docs/search.png" alt="A search finding a GitHub login, with commands to use the text elsewhere" width="600">
@@ -81,6 +87,9 @@ everything at once and groups the results.
 | <kbd>Esc</kbd> | go back, or close |
 | <kbd>Backspace</kbd> on an empty field | go back |
 
+Commands like *Search Passwords*, *Start Timer* and *Search Emoji & Symbols* open their own list;
+<kbd>Esc</kbd> brings you back to the start.
+
 <p align="center">
   <img src="docs/actions.png" alt="The action panel listing every action for a password with its shortcut" width="600">
 </p>
@@ -90,7 +99,7 @@ everything at once and groups the results.
 | Key | Action |
 | --- | --- |
 | <kbd>Enter</kbd> or <kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>C</kbd> | copy password |
-| <kbd>Ctrl</kbd><kbd>C</kbd> | copy username |
+| <kbd>Ctrl</kbd><kbd>C</kbd> | copy username (with text selected in the search field, copies that text instead) |
 | <kbd>Shift</kbd><kbd>Enter</kbd> | type password, then Enter |
 | <kbd>Ctrl</kbd><kbd>Enter</kbd> | type username, Tab, password, Enter |
 | <kbd>Alt</kbd><kbd>T</kbd> | copy TOTP code (<kbd>Alt</kbd><kbd>Shift</kbd><kbd>T</kbd> types it) |
@@ -176,7 +185,8 @@ gnome-extensions prefs quick-launcher@julian.falcondev.de
 Or run *Quick Launcher Settings* from the launcher. You can change the shortcut, turn each
 password manager on or off, set the rbw and op binaries, the 1Password account and unlock
 method, the default currency, how long copied secrets stay on the clipboard, and the Clockify API
-key. An optional second shortcut opens Clockify directly. Workspaces on a regional Clockify server
+key. An optional second shortcut opens Clockify directly, and *Clear* empties the list of recently
+used items. Workspaces on a regional Clockify server
 need the matching API URL, for example `https://euc1.clockify.me/api/v1`.
 
 ## Notes
