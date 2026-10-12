@@ -1,0 +1,258 @@
+import Adw from 'gi://Adw';
+import Gdk from 'gi://Gdk';
+import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
+import Gtk from 'gi://Gtk';
+
+import {ExtensionPreferences} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
+
+import {findProgram, run} from './lib/subprocess.ts';
+
+export default class QuickLauncherPreferences extends ExtensionPreferences {
+    override async fillPreferencesWindow(window: Adw.PreferencesWindow) {
+        const settings = this.getSettings();
+        window.set_default_size(640, 760);
+        window.add(this.#passwordsPage(settings));
+        window.add(clockifyPage(settings));
+    }
+
+    #passwordsPage(settings: Gio.Settings): Adw.PreferencesPage {
+        const page = new Adw.PreferencesPage({title: 'Passwords', icon_name: 'dialog-password-symbolic'});
+
+        const general = new Adw.PreferencesGroup({
+            description: 'One search over all enabled password managers. Locked vaults show up as a row you can unlock right there.',
+        });
+        general.add(shortcutRow(settings, 'shortcut', 'Open launcher'));
+        page.add(general);
+
+        const bitwarden = new Adw.PreferencesGroup({
+            title: 'Bitwarden',
+            description: 'Through rbw (https://github.com/doy/rbw); set it up with rbw config set email …',
+        });
+        bitwarden.add(switchRow(settings, 'bitwarden-enabled', 'Enabled'));
+        bitwarden.add(programRow(settings, 'rbw-path', 'rbw binary'));
+        bitwarden.add(this.#pinentryRow(settings));
+        page.add(bitwarden);
+
+        const onePassword = new Adw.PreferencesGroup({
+            title: '1Password',
+            description: 'Through the 1Password CLI (op)',
+        });
+        onePassword.add(switchRow(settings, 'onepassword-enabled', 'Enabled'));
+        onePassword.add(programRow(settings, 'op-path', 'op binary'));
+
+        const account = new Adw.EntryRow({title: 'Account (empty = default)', show_apply_button: true});
+        settings.bind('onepassword-account', account, 'text', Gio.SettingsBindFlags.DEFAULT);
+        onePassword.add(account);
+
+        const methods = [
+            ['auto', 'Automatic', 'Desktop app if installed, otherwise master password'],
+            ['app', 'Desktop app', 'Needs “Integrate with 1Password CLI” in the app’s developer settings'],
+            ['password', 'Master password', 'Typed into the launcher; the session lives in memory only'],
+        ] as const;
+        const unlock = new Adw.ComboRow({
+            title: 'Unlock with',
+            model: Gtk.StringList.new(methods.map(m => m[1])),
+        });
+        const syncUnlock = () => {
+            const index = methods.findIndex(m => m[0] === settings.get_string('onepassword-unlock'));
+            unlock.selected = Math.max(0, index);
+            unlock.subtitle = methods[unlock.selected][2];
+        };
+        syncUnlock();
+        unlock.connect('notify::selected', () => settings.set_string('onepassword-unlock', methods[unlock.selected][0]));
+        const unlockId = settings.connect('changed::onepassword-unlock', syncUnlock);
+        unlock.connect('destroy', () => settings.disconnect(unlockId));
+        onePassword.add(unlock);
+        page.add(onePassword);
+
+        const output = new Adw.PreferencesGroup({title: 'Copy & type'});
+        output.add(spinRow(settings, 'clear-clipboard-seconds', 'Clear clipboard after', 'Seconds, 0 = never', 3600, 5));
+        output.add(switchRow(settings, 'scrub-clipboard-history', 'Remove secrets from Clipboard Indicator history'));
+        output.add(spinRow(settings, 'type-delay-ms', 'Delay between typed keys', 'Milliseconds; raise this if characters get lost', 200, 1));
+        output.add(switchRow(settings, 'submit-after-password', 'Press Enter after typing a password'));
+        page.add(output);
+
+        return page;
+    }
+
+    /**
+     * rbw always asks through a pinentry program. This points it at a small
+     * script that forwards the prompt to the launcher over D-Bus (falling
+     * back to the previous pinentry when the extension isn't running).
+     */
+    #pinentryRow(settings: Gio.Settings): Adw.SwitchRow {
+        const row = new Adw.SwitchRow({
+            title: 'Enter master password in the launcher',
+            subtitle: 'Sets rbw’s pinentry to a bridge script; turning this off restores the previous one',
+            active: settings.get_boolean('rbw-pinentry-bridge'),
+        });
+        row.connect('notify::active', async () => {
+            if (row.active === settings.get_boolean('rbw-pinentry-bridge'))
+                return;
+            try {
+                await this.#setPinentryBridge(settings, row.active);
+                row.remove_css_class('error');
+            } catch (e) {
+                console.error('quick-launcher: Could not configure rbw pinentry', e);
+                row.subtitle = `Failed: ${(e as Error).message}`;
+                row.add_css_class('error');
+                row.active = settings.get_boolean('rbw-pinentry-bridge');
+            }
+        });
+        return row;
+    }
+
+    async #setPinentryBridge(settings: Gio.Settings, enabled: boolean) {
+        const rbw = settings.get_string('rbw-path') || 'rbw';
+        const dir = GLib.build_filenamev([GLib.get_user_data_dir(), 'quick-launcher']);
+        const wrapper = GLib.build_filenamev([dir, 'pinentry']);
+
+        if (!enabled) {
+            await run([rbw, 'config', 'set', 'pinentry', settings.get_string('rbw-pinentry-fallback') || 'pinentry']);
+            settings.set_boolean('rbw-pinentry-bridge', false);
+            return;
+        }
+
+        const {stdout} = await run([rbw, 'config', 'show'], {check: false});
+        let current = 'pinentry';
+        try {
+            current = JSON.parse(stdout).pinentry || current;
+        } catch {}
+        if (current !== wrapper)
+            settings.set_string('rbw-pinentry-fallback', current);
+
+        const gjs = findProgram('gjs');
+        const gdbus = findProgram('gdbus');
+        if (!gjs || !gdbus)
+            throw new Error('gjs and gdbus are needed for the bridge');
+
+        GLib.mkdir_with_parents(dir, 0o700);
+        const script = GLib.build_filenamev([dir, 'pinentry.js']);
+        Gio.File.new_for_path(GLib.build_filenamev([this.path, 'bin', 'pinentry.js']))
+            .copy(Gio.File.new_for_path(script), Gio.FileCopyFlags.OVERWRITE, null, null);
+
+        const q = GLib.shell_quote;
+        const fallback = settings.get_string('rbw-pinentry-fallback') || 'pinentry';
+        const content = `#!/bin/sh
+# Installed by the Quick Launcher GNOME extension: asks for rbw's master
+# password in the launcher, or uses the regular pinentry if it isn't running.
+if ${q(gdbus)} call --session --dest org.gnome.Shell \\
+    --object-path /de/falcondev/QuickLauncher/Pinentry \\
+    --method de.falcondev.QuickLauncher.Pinentry.Ping >/dev/null 2>&1; then
+  exec ${q(gjs)} -m ${q(script)}
+fi
+exec ${q(fallback)} "$@"
+`;
+        GLib.file_set_contents(wrapper, content);
+        GLib.chmod(wrapper, 0o755);
+
+        await run([rbw, 'config', 'set', 'pinentry', wrapper]);
+        settings.set_boolean('rbw-pinentry-bridge', true);
+    }
+}
+
+function clockifyPage(settings: Gio.Settings): Adw.PreferencesPage {
+    const page = new Adw.PreferencesPage({title: 'Clockify', icon_name: 'alarm-symbolic'});
+
+    const general = new Adw.PreferencesGroup({
+        description: 'Start timers from your recent time entries, or a new one with @project and #tags',
+    });
+    general.add(shortcutRow(settings, 'clockify-shortcut', 'Open launcher'));
+    page.add(general);
+
+    const api = new Adw.PreferencesGroup({
+        title: 'API',
+        description: 'Create a key under Clockify → Profile settings → API',
+    });
+    const key = new Adw.PasswordEntryRow({title: 'API key', show_apply_button: true});
+    settings.bind('clockify-api-key', key, 'text', Gio.SettingsBindFlags.DEFAULT);
+    api.add(key);
+
+    const url = new Adw.EntryRow({title: 'API URL (regional: https://euc1.clockify.me/api/v1)', show_apply_button: true});
+    settings.bind('clockify-api-url', url, 'text', Gio.SettingsBindFlags.DEFAULT);
+    api.add(url);
+    page.add(api);
+
+    return page;
+}
+
+function switchRow(settings: Gio.Settings, key: string, title: string): Adw.SwitchRow {
+    const row = new Adw.SwitchRow({title});
+    settings.bind(key, row, 'active', Gio.SettingsBindFlags.DEFAULT);
+    return row;
+}
+
+function spinRow(settings: Gio.Settings, key: string, title: string, subtitle: string, upper: number, step: number): Adw.SpinRow {
+    const row = new Adw.SpinRow({
+        title,
+        subtitle,
+        adjustment: new Gtk.Adjustment({lower: 0, upper, step_increment: step}),
+    });
+    settings.bind(key, row, 'value', Gio.SettingsBindFlags.DEFAULT);
+    return row;
+}
+
+/** An entry for a binary that turns red if it can't be found. */
+function programRow(settings: Gio.Settings, key: string, title: string): Adw.EntryRow {
+    const row = new Adw.EntryRow({title, show_apply_button: true});
+    settings.bind(key, row, 'text', Gio.SettingsBindFlags.DEFAULT);
+    const check = () => {
+        if (findProgram(settings.get_string(key)))
+            row.remove_css_class('error');
+        else
+            row.add_css_class('error');
+    };
+    check();
+    const id = settings.connect(`changed::${key}`, check);
+    row.connect('destroy', () => settings.disconnect(id));
+    return row;
+}
+
+/** Shows a keyboard shortcut; click to record a new one. */
+function shortcutRow(settings: Gio.Settings, key: string, title: string): Adw.ActionRow {
+    const label = new Gtk.ShortcutLabel({
+        disabled_text: 'Disabled',
+        valign: Gtk.Align.CENTER,
+    });
+    const row = new Adw.ActionRow({title, activatable: true});
+    row.add_suffix(label);
+
+    const sync = () => {
+        label.accelerator = settings.get_strv(key)[0] ?? '';
+    };
+    sync();
+    const id = settings.connect(`changed::${key}`, sync);
+    row.connect('destroy', () => settings.disconnect(id));
+
+    row.connect('activated', () => {
+        const dialog = new Adw.AlertDialog({
+            heading: title,
+            body: 'Press a shortcut, Esc to cancel or Backspace to disable it.',
+        });
+        dialog.add_response('cancel', 'Cancel');
+
+        const controller = new Gtk.EventControllerKey();
+        controller.connect('key-pressed', (_controller, keyval: number, keycode: number, state: Gdk.ModifierType) => {
+            const mods = state & Gtk.accelerator_get_default_mod_mask();
+            if (!mods && keyval === Gdk.KEY_Escape) {
+                dialog.close();
+                return Gdk.EVENT_STOP;
+            }
+            if (!mods && keyval === Gdk.KEY_BackSpace) {
+                settings.set_strv(key, []);
+                dialog.close();
+                return Gdk.EVENT_STOP;
+            }
+            if (!Gtk.accelerator_valid(keyval, mods))
+                return Gdk.EVENT_STOP;
+
+            settings.set_strv(key, [Gtk.accelerator_name_with_keycode(null, keyval, keycode, mods)]);
+            dialog.close();
+            return Gdk.EVENT_STOP;
+        });
+        dialog.add_controller(controller);
+        dialog.present(row);
+    });
+    return row;
+}

@@ -1,82 +1,132 @@
-.bwl-box {
-  background-color: rgba(30, 30, 34, 0.97);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 18px;
-  padding: 10px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
-  spacing: 6px;
+.ql-box {
+  background-color: rgba(28, 28, 32, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+  padding: 8px;
+  spacing: 4px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
 }
 
-.bwl-entry {
-  font-size: 18pt;
+.ql-entry {
+  font-size: 17pt;
   padding: 10px 14px;
-  border-radius: 12px;
-  background-color: rgba(255, 255, 255, 0.06);
+  border-radius: 14px;
   border: none;
+  background-color: transparent;
   box-shadow: none;
   color: #fff;
-  selection-background-color: rgba(53, 132, 228, 0.6);
-  selected-color: #fff;
+  caret-color: -st-accent-color;
+  selection-background-color: -st-accent-color;
+  selected-color: -st-accent-fg-color;
 }
 
-.bwl-entry:focus {
+.ql-entry:focus {
   box-shadow: none;
 }
 
-.bwl-entry-icon {
+.ql-box:secret .ql-entry {
+  background-color: rgba(255, 255, 255, 0.06);
+}
+
+.ql-entry-icon {
   icon-size: 20px;
-  padding-right: 10px;
+  padding-right: 12px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.ql-box:secret .ql-entry-icon {
+  color: -st-accent-color;
+}
+
+.ql-status {
+  padding: 2px 14px 6px;
+  font-size: 10pt;
   color: rgba(255, 255, 255, 0.6);
 }
 
-.bwl-status {
-  padding: 4px 14px;
-  color: rgba(255, 255, 255, 0.6);
+.ql-scroll {
+  max-height: 460px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding-top: 4px;
 }
 
-.bwl-scroll {
-  max-height: 440px;
-}
-
-.bwl-row {
+.ql-row {
   padding: 7px 12px;
-  border-radius: 10px;
+  border-radius: 12px;
   spacing: 12px;
 }
 
-.bwl-row:hover {
-  background-color: rgba(255, 255, 255, 0.06);
+.ql-row:hover {
+  background-color: rgba(255, 255, 255, 0.05);
 }
 
-.bwl-row:selected {
-  background-color: #3584e4;
+.ql-row:selected {
+  background-color: -st-accent-color;
 }
 
-.bwl-row-icon {
-  icon-size: 20px;
-  color: rgba(255, 255, 255, 0.75);
+.ql-row-icon {
+  icon-size: 18px;
+  color: rgba(255, 255, 255, 0.7);
 }
 
-.bwl-row:selected .bwl-row-icon {
+.ql-row-title {
+  font-weight: 600;
   color: #fff;
 }
 
-.bwl-row-name {
-  font-weight: bold;
-  color: #fff;
-}
-
-.bwl-row-subtitle {
+.ql-row-subtitle {
   font-size: 9pt;
-  color: rgba(255, 255, 255, 0.6);
+  color: rgba(255, 255, 255, 0.55);
 }
 
-.bwl-row:selected .bwl-row-subtitle {
-  color: rgba(255, 255, 255, 0.85);
-}
-
-.bwl-hints {
-  padding: 4px 12px 2px;
-  font-size: 8.5pt;
+.ql-row-trailing {
+  font-size: 9pt;
+  font-feature-settings: "tnum";
   color: rgba(255, 255, 255, 0.45);
+}
+
+.ql-row-dim .ql-row-title {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.ql-row:selected .ql-row-icon,
+.ql-row:selected .ql-row-title {
+  color: -st-accent-fg-color;
+}
+
+.ql-row:selected .ql-row-subtitle,
+.ql-row:selected .ql-row-trailing {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.ql-badge {
+  font-size: 8pt;
+  font-weight: bold;
+  padding: 2px 8px;
+  border-radius: 99px;
+  color: rgba(255, 255, 255, 0.75);
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.ql-badge-bitwarden {
+  color: #8db4ff;
+  background-color: rgba(23, 93, 220, 0.25);
+}
+
+.ql-badge-1password {
+  color: #7fd6ff;
+  background-color: rgba(0, 148, 245, 0.18);
+  border: 1px solid rgba(0, 148, 245, 0.35);
+}
+
+.ql-row:selected .ql-badge {
+  color: #fff;
+  background-color: rgba(255, 255, 255, 0.2);
+  border-color: transparent;
+}
+
+.ql-hints {
+  padding: 6px 12px 2px;
+  font-size: 8.5pt;
+  color: rgba(255, 255, 255, 0.38);
 }

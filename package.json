@@ -1,0 +1,31 @@
+{
+  "name": "quick-launcher",
+  "private": true,
+  "description": "GNOME Shell extension: Spotlight-style launchers for Bitwarden, 1Password and Clockify",
+  "type": "module",
+  "packageManager": "pnpm@10.0.0",
+  "scripts": {
+    "build": "scripts/build.sh",
+    "install-local": "scripts/install.sh",
+    "zip": "scripts/pack.sh",
+    "typecheck": "tsc -p . --noEmit && tsc -p test",
+    "lint": "eslint .",
+    "test": "node --test 'test/*.test.ts'",
+    "check": "pnpm typecheck && pnpm lint && pnpm test"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@girs/adw-1": "4.9.0",
+    "@girs/gdk-4.0": "4.9.0",
+    "@girs/giounix-2.0": "4.9.0",
+    "@girs/gjs": "^4.9.0",
+    "@girs/gnome-shell": "^50.0.4",
+    "@girs/gtk-4.0": "4.9.0",
+    "@girs/soup-3.0": "4.9.0",
+    "@types/node": "24",
+    "eslint": "^10.12.0",
+    "globals": "^17.13.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.71.1"
+  }
+}
