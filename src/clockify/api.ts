@@ -7,16 +7,19 @@ import type {Project, Tag, TimeEntry} from './tasks.ts';
 Gio._promisify(Soup.Session.prototype, 'send_and_read_async');
 
 export class ClockifyError extends Error {
-    constructor(message: string) {
+    readonly status: number;
+
+    constructor(message: string, status = 0) {
         super(message);
         this.name = 'ClockifyError';
+        this.status = status;
     }
 }
 
 /** HTTP 429: the Free plan allows only 30 workspace requests per hour. */
 export class RateLimitError extends ClockifyError {
     constructor() {
-        super('Clockify request limit reached (Free plan: 30 per hour), showing the last known state');
+        super('Clockify request limit reached (Free plan: 30 per hour), showing the last known state', 429);
         this.name = 'RateLimitError';
     }
 }
@@ -93,7 +96,7 @@ export class ClockifyApi {
             try {
                 detail = JSON.parse(text).message || detail;
             } catch {}
-            throw new ClockifyError(`${status} ${detail}`.trim());
+            throw new ClockifyError(`${status} ${detail}`.trim(), status);
         }
         return (text ? JSON.parse(text) : null) as T;
     }
@@ -146,12 +149,15 @@ export class ClockifyApi {
 
     /** Stops the running timer at `end`. Resolves false if none was running. */
     async stop(end = now()): Promise<boolean> {
-        const path = await this.#entriesPath();
-        const running = await this.#request<TimeEntry[]>('GET', path, {query: {'in-progress': true}});
-        if (!running?.length)
-            return false;
-        await this.#request('PATCH', path, {body: {end}});
-        return true;
+        // One request instead of asking first: Clockify answers 404 when no timer runs.
+        try {
+            await this.#request('PATCH', await this.#entriesPath(), {body: {end}});
+            return true;
+        } catch (e) {
+            if (e instanceof ClockifyError && (e.status === 404 || e.status === 400))
+                return false;
+            throw e;
+        }
     }
 
     /** Starts a timer, stopping the running one at the same instant so there's no gap. */
