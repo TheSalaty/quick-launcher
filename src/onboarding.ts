@@ -77,12 +77,17 @@ export class Onboarding {
         ];
     }
 
-    #vaultRow({vault, logo, status, error, items}: VaultInfo): Item {
+    #vaultRow({vault, logo, status, error, items, server}: VaultInfo): Item {
         const base = {id: `onboarding:${vault.id}`, icon: {gicon: logo, color: vault.color}};
         const turnOff = {
             title: `Don’t Use ${vault.name}`, icon: 'process-stop-symbolic', shortcut: {key: 'd', ctrl: true},
             run: () => this.#p.passwords.setEnabled(vault, false),
         };
+        const changeServer = vault.askServer ? [{
+            title: 'Use Another Server…', icon: 'network-server-symbolic', shortcut: {key: 's', ctrl: true},
+            run: () => void this.#p.passwords.changeServer(vault),
+        }] : [];
+        const host = server.replace(/^[a-z]+:\/\//i, '');
 
         if (!vault.installed) {
             return {
@@ -98,11 +103,13 @@ export class Onboarding {
             return {
                 ...base,
                 title: vault.name,
-                subtitle: `${items} items · Enter or Ctrl+Shift+C copies a password, Ctrl+C the username`,
+                subtitle: [`${items} items`, host, 'Enter or Ctrl+Shift+C copies a password, Ctrl+C the username']
+                    .filter(Boolean).join(' · '),
                 accessory: '✓ Connected',
                 accessoryActive: true,
                 actions: [
                     {title: 'Search Passwords', icon: 'system-search-symbolic', run: () => this.#p.launcher.push(this.#p.passwords.view)},
+                    ...changeServer,
                     turnOff,
                 ],
             };
@@ -117,10 +124,10 @@ export class Onboarding {
             ...base,
             title: `Connect ${vault.name}`,
             subtitle: status === 'error' ? error : vault.id === 'bitwarden'
-                ? 'Through rbw · the master password is asked right here'
+                ? `Through rbw${host ? ` · ${host}` : ''} · self-hosted works too, Ctrl+S`
                 : 'Through the 1Password app or your master password',
             accessory: status === 'error' ? 'Failed' : undefined,
-            actions: [connect, turnOff],
+            actions: [connect, ...changeServer, turnOff],
         };
     }
 

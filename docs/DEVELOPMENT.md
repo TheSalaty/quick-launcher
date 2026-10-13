@@ -56,7 +56,9 @@ of the start view until the `onboarding-done` key is set, which happens when it 
 `enable()` also posts a notification until then. Its rows read state the providers already
 have: `Passwords.vaults()` (with `Vault.installed`, from the CLI on PATH), `Clockify.configured`
 and `.error`, `T3Code.available`. *Connect* calls `Passwords.connect()`, which turns the vault
-on, runs `Vault.setUp()` (rbw's account email, asked with the visible `Launcher.ask()` prompt),
+on, runs `Vault.setUp()` (rbw's account email and server, asked with the visible `Launcher.ask()`
+prompt and written with `rbw config set`, followed by `rbw stop-agent` so the next unlock logs in
+again),
 installs the pinentry bridge for rbw, and unlocks. For Clockify, `ClockifyApi.verify()` checks
 a key against `/user` before it is saved. A non-empty query is passed to the start view's search.
 

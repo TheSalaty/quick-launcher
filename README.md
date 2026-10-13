@@ -71,8 +71,10 @@ Log out and back in before enabling the extension. Run `make pack` to build an i
 After you enable the extension, a notification points you to the shortcut. The first time you
 open the launcher, it starts with *Getting Started*:
 
-- **Connect Bitwarden** asks for your account email, if rbw doesn't know it yet, and then your
-  master password, all in the launcher.
+- **Connect Bitwarden** asks for your account email and server, if rbw doesn't know them yet,
+  and then your master password, all in the launcher. Leave the server empty for bitwarden.com,
+  or enter your self-hosted server (Vaultwarden works too) or `vault.bitwarden.eu`.
+  <kbd>Ctrl</kbd><kbd>S</kbd> switches to another server later.
 - **Connect 1Password** unlocks it through the 1Password app or your master password.
 - **Connect Clockify** takes an API key and checks it before saving it. <kbd>Ctrl</kbd><kbd>O</kbd>
   opens the page where you create one.
@@ -141,7 +143,10 @@ A locked vault shows up as **Unlock Bitwarden** or **Unlock 1Password**. Press
   the app asks (system authentication or fingerprint). Without the app, you type the master
   password into the launcher. It goes to `op signin` on stdin, and the session token stays in
   memory.
-- **Bitwarden**: rbw always asks through a pinentry program. Turn on *Enter master password in
+- **Bitwarden**: works with bitwarden.com, the EU cloud and self-hosted servers, including
+  Vaultwarden. Set the server in *Getting Started*, in the settings, or with <kbd>Ctrl</kbd><kbd>S</kbd>
+  on the *Unlock Bitwarden* row. The Bitwarden app isn't needed, because rbw talks to the server
+  itself. rbw always asks through a pinentry program. Turn on *Enter master password in
   the launcher* in the settings to get that prompt in the launcher. Without it, your usual
   pinentry asks and the launcher comes back afterwards.
 
@@ -225,7 +230,7 @@ gnome-extensions prefs quick-launcher@julian.falcondev.de
 ```
 
 Or run *Quick Launcher Settings* from the launcher. You can change the shortcut, turn each
-password manager on or off, set the rbw and op binaries, the 1Password account and unlock
+password manager on or off, set the rbw and op binaries, the Bitwarden account email and server, the 1Password account and unlock
 method, the default currency, whether to search T3 Code sessions (and T3 Code's data directory),
 how long copied secrets stay on the clipboard, and the Clockify API key. An optional second shortcut opens Clockify directly, and *Clear* empties the list of recently
 used items. Workspaces on a regional Clockify server

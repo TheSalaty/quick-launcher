@@ -43,6 +43,11 @@ export interface Vault {
 
     /** One-time setup before the first unlock, e.g. the account email. Resolves false if cancelled. */
     setUp?(prompter: Prompter): Promise<boolean>;
+    /** Asks for a self-hosted server URL; resolves '' for the default server and null if cancelled. */
+    askServer?(prompter: Prompter): Promise<string | null>;
+    /** The configured self-hosted server, '' for the default */
+    server?(): Promise<string>;
+    setServer?(server: string): Promise<void>;
 
     isUnlocked(): Promise<boolean>;
     /** Resolves false if the user cancelled. */
