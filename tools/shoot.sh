@@ -33,6 +33,8 @@ unset WAYLAND_DISPLAY DISPLAY
 
 gsettings set org.gnome.shell welcome-dialog-last-shown-version '999'
 gsettings set org.gnome.shell disable-user-extensions false
+# No banners, so notifications from the real account (e.g. online accounts) stay out of the shots.
+gsettings set org.gnome.desktop.notifications show-banners false
 gsettings set org.gnome.shell enabled-extensions "['$UUID', 'screenshot-driver@quick-launcher']"
 gsettings set org.gnome.desktop.interface scaling-factor 2
 gsettings set org.gnome.desktop.interface accent-color teal
