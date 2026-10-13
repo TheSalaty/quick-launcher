@@ -21,6 +21,8 @@ export interface VaultInfo {
     status: VaultStatus;
     error: string;
     items: number;
+    /** Self-hosted server, '' for the default */
+    server: string;
 }
 
 interface VaultState {
@@ -74,6 +76,7 @@ export class Passwords {
     readonly #vaults: Vault[];
     readonly #states = new Map<Vault, VaultState>();
     readonly #logos = new Map<Vault, Gio.Icon>();
+    readonly #servers = new Map<Vault, string>();
     readonly #clipboard: SecretClipboard;
     readonly #typist: Typist;
     readonly #prompter: Prompter;
@@ -183,7 +186,7 @@ export class Passwords {
     vaults(): VaultInfo[] {
         return this.#vaults.map(vault => {
             const {status, error, items} = this.#state(vault);
-            return {vault, logo: this.#logos.get(vault)!, status, error, items: items.length};
+            return {vault, logo: this.#logos.get(vault)!, status, error, items: items.length, server: this.#servers.get(vault) ?? ''};
         });
     }
 
@@ -207,6 +210,23 @@ export class Passwords {
             return;
         }
         await this.#unlock(vault);
+    }
+
+    /** Asks for another server, then signs in there. */
+    async changeServer(vault: Vault) {
+        if (!vault.askServer || !vault.setServer)
+            return;
+        try {
+            const server = await vault.askServer(this.#prompter);
+            if (server === null)
+                return;
+            await vault.setServer(server);
+        } catch (e) {
+            this.#setState(vault, {status: 'error', error: (e as Error).message});
+            return;
+        }
+        this.#setState(vault, {status: 'locked', items: []});
+        await this.connect(vault);
     }
 
     setEnabled(vault: Vault, enabled: boolean) {
@@ -254,7 +274,13 @@ export class Passwords {
         const base = {
             id: `vault:${vault.id}`,
             source: {icon: this.#logos.get(vault)!, styleClass: vault.logoClass},
-            actions: [{title: status === 'error' ? 'Retry' : 'Unlock', icon: 'system-lock-screen-symbolic', run: () => void this.#unlock(vault)}],
+            actions: [
+                {title: status === 'error' ? 'Retry' : 'Unlock', icon: 'system-lock-screen-symbolic', run: () => void this.#unlock(vault)},
+                ...vault.askServer ? [{
+                    title: 'Use Another Server…', icon: 'network-server-symbolic', shortcut: {key: 's', ctrl: true},
+                    run: () => void this.changeServer(vault),
+                }] : [],
+            ],
         };
         switch (status) {
         case 'unlocking':
@@ -297,6 +323,12 @@ export class Passwords {
     async #reload(vault: Vault) {
         const generation = ++this.#state(vault).generation;
         const current = () => !this.#destroyed && this.#state(vault).generation === generation;
+        vault.server?.().then(server => {
+            if (!this.#destroyed && server !== (this.#servers.get(vault) ?? '')) {
+                this.#servers.set(vault, server);
+                this.#launcher.refresh();
+            }
+        }).catch(() => {});
 
         try {
             if (!await vault.isUnlocked()) {

@@ -8,6 +8,7 @@ import {ExtensionPreferences} from 'resource:///org/gnome/Shell/Extensions/js/ex
 import {CURRENCIES} from './calc/units.ts';
 import {findProgram} from './lib/subprocess.ts';
 import {setPinentryBridge} from './passwords/bridge.ts';
+import {rbwConfig, setRbwConfig, type RbwConfig} from './passwords/rbw.ts';
 
 export default class QuickLauncherPreferences extends ExtensionPreferences {
     override async fillPreferencesWindow(window: Adw.PreferencesWindow) {
@@ -23,10 +24,12 @@ export default class QuickLauncherPreferences extends ExtensionPreferences {
 
         const bitwarden = new Adw.PreferencesGroup({
             title: 'Bitwarden',
-            description: 'Through rbw (https://github.com/doy/rbw); set it up with rbw config set email …',
+            description: 'Through rbw (https://github.com/doy/rbw), on bitwarden.com, the EU cloud or a self-hosted server',
         });
         bitwarden.add(switchRow(settings, 'bitwarden-enabled', 'Enabled'));
         bitwarden.add(programRow(settings, 'rbw-path', 'rbw binary'));
+        bitwarden.add(rbwConfigRow(settings, 'email', 'Account email'));
+        bitwarden.add(rbwConfigRow(settings, 'server', 'Server (empty = bitwarden.com)'));
         bitwarden.add(this.#pinentryRow(settings));
         page.add(bitwarden);
 
@@ -188,6 +191,28 @@ function spinRow(settings: Gio.Settings, key: string, title: string, subtitle: s
 }
 
 /** An entry for a binary that turns red if it can't be found. */
+/** Edits rbw's own config (email, server); applied with `rbw config set`. */
+function rbwConfigRow(settings: Gio.Settings, key: keyof RbwConfig, title: string): Adw.EntryRow {
+    const row = new Adw.EntryRow({title, show_apply_button: true, sensitive: false});
+    if (key === 'server')
+        row.set_tooltip_text('Self-hosted or EU cloud, e.g. https://vault.example.com or https://vault.bitwarden.eu');
+    rbwConfig(settings).then(config => {
+        row.text = config[key];
+        row.sensitive = true;
+    }).catch(() => {});
+    row.connect('apply', async () => {
+        try {
+            await setRbwConfig(settings, {[key]: row.text});
+            row.text = (await rbwConfig(settings))[key];
+            row.remove_css_class('error');
+        } catch (e) {
+            console.error('quick-launcher: Could not change the rbw config', e);
+            row.add_css_class('error');
+        }
+    });
+    return row;
+}
+
 function programRow(settings: Gio.Settings, key: string, title: string): Adw.EntryRow {
     const row = new Adw.EntryRow({title, show_apply_button: true});
     settings.bind(key, row, 'text', Gio.SettingsBindFlags.DEFAULT);

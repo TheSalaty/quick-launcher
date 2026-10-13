@@ -137,7 +137,7 @@ sleep 1.5
 keys Escape
 
 # First run: nothing connected yet, so the launcher opens with Getting Started.
-# Then connect Bitwarden (email, master password) and Clockify from there.
+# Then connect Bitwarden (email, self-hosted server, master password) and Clockify from there.
 keys Escape
 rm -f "$QL_FIXTURE_STATE/rbw-unlocked" "$QL_FIXTURE_STATE/rbw-email"
 set_ql clockify-api-key ''
@@ -150,6 +150,9 @@ shot onboarding
 keys Return
 sleep 0.8
 type_text julian@falcondev.de
+keys Return
+sleep 0.5
+type_text vault.example.com
 keys Return
 sleep 2
 type_text hunter2
