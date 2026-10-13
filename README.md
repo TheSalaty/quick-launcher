@@ -19,6 +19,7 @@ like math, a unit conversion, a date or a time zone is answered right away.
 - Unlock either vault in the launcher: type the master password there, or hand over to the
   1Password app
 - Items stay searchable while their vault is locked; using one asks to unlock it first
+- Open an item's website and log in through the Bitwarden or 1Password browser extension
 - Copy or type passwords, usernames and TOTP codes. Typing works on Wayland without ydotool
 - Find active T3 Code sessions, see which are working and for how long, and open them in T3 Code
 - Start and stop Clockify timers from your recent entries, or a new one with `@project` and `#tag`
@@ -130,12 +131,22 @@ Commands like *Search Passwords*, *Start Timer* and *Search Emoji & Symbols* ope
 
 | Key | Action |
 | --- | --- |
-| <kbd>Enter</kbd> or <kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>C</kbd> | copy password |
+| <kbd>Enter</kbd> | open the website and log in (copy password for items without one) |
+| <kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>C</kbd> | copy password |
 | <kbd>Ctrl</kbd><kbd>C</kbd> | copy username (with text selected in the search field, copies that text instead) |
 | <kbd>Shift</kbd><kbd>Enter</kbd> | type password, then Enter |
 | <kbd>Ctrl</kbd><kbd>Enter</kbd> | type username, Tab, password, Enter |
 | <kbd>Alt</kbd><kbd>T</kbd> | copy TOTP code (<kbd>Alt</kbd><kbd>Shift</kbd><kbd>T</kbd> types it) |
 | <kbd>Ctrl</kbd><kbd>R</kbd> / <kbd>Ctrl</kbd><kbd>L</kbd> | sync / lock vaults (in *Search Passwords*) |
+
+**Logging in on a website:** for a login with a website, <kbd>Enter</kbd> opens it in your default
+browser (a new tab if it is running), waits 2.5 seconds for it to load, and presses the autofill
+shortcut of the vault's browser extension: <kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>L</kbd> for
+Bitwarden, <kbd>Ctrl</kbd><kbd>\\</kbd> for 1Password. The extension fills only logins that match
+the page, and the keys are only pressed if the browser has focus. In Chrome, check
+`chrome://extensions/shortcuts` that Bitwarden's *Autofill login* has that shortcut (another
+extension may have taken it), or set yours in the settings. Turn it off there to copy the password
+on <kbd>Enter</kbd> again.
 
 A locked vault shows up as **Unlock Bitwarden** or **Unlock 1Password**. Press
 <kbd>Enter</kbd> on it.

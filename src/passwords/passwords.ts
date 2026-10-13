@@ -1,4 +1,5 @@
 import Gio from 'gi://Gio';
+import Shell from 'gi://Shell';
 import St from 'gi://St';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
@@ -66,6 +67,18 @@ function stripScheme(uri: string): string {
     return uri.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '').replace(/^www\./i, '');
 }
 
+/** The item's first web address, with https:// if it has no scheme */
+function websiteOf(item: VaultItem): string | null {
+    if (item.kind !== 'login')
+        return null;
+    for (const uri of item.urls) {
+        const url = /^[a-z][a-z0-9+.-]*:/i.test(uri) ? uri : `https://${uri}`;
+        if (/^https?:\/\/[^/\s]+\.[^/\s]+/i.test(url))
+            return url;
+    }
+    return null;
+}
+
 function searchFields(item: VaultItem): Field[] {
     return [
         [10, item.name],
@@ -91,6 +104,7 @@ export class Passwords {
     readonly #settingsIds: number[];
     readonly #extensionDir: Gio.File;
     readonly #cache = new ItemCache();
+    readonly #timers: Timers;
     #index = new SearchIndex<VaultItem>([], searchFields);
     #pinentry: PinentryService | null = null;
     #destroyed = false;
@@ -108,6 +122,7 @@ export class Passwords {
             this.#logos.set(vault, new Gio.FileIcon({file: iconsDir.get_child(vault.logo)}));
             this.#states.set(vault, {status: 'checking', error: '', items: vault.enabled ? this.#cache.items(vault) : [], generation: 0});
         }
+        this.#timers = timers;
         this.#clipboard = new SecretClipboard(settings, timers);
         this.#typist = new Typist(settings, timers);
         this.#prompter = {
@@ -261,6 +276,7 @@ export class Passwords {
 
     #item(item: VaultItem): Item {
         const run = (verb: 'copy' | 'type', what: What) => () => void this.#perform(item, verb, what);
+        const website = this.#settings.get_boolean('browser-login') ? websiteOf(item) : null;
         return {
             id: item.id,
             icon: {name: KIND_ICONS[item.kind]},
@@ -269,6 +285,9 @@ export class Passwords {
             accessory: this.#state(item.vault).status === 'unlocked' ? undefined : 'Locked',
             source: {icon: this.#logos.get(item.vault)!, styleClass: item.vault.logoClass},
             actions: [
+                ...website ? [{
+                    title: 'Open and Log In', icon: 'web-browser-symbolic', run: () => void this.#logIn(item, website),
+                } satisfies Action] : [],
                 {title: 'Copy Password', icon: 'edit-copy-symbolic', shortcut: 'copy-password', run: run('copy', 'password')},
                 {title: 'Copy Username', icon: 'avatar-default-symbolic', shortcut: 'copy-username', run: run('copy', 'user')},
                 {title: 'Type Password', icon: 'input-keyboard-symbolic', shortcut: 'type-password', run: run('type', 'password')},
@@ -548,6 +567,45 @@ export class Passwords {
                 return;
             }
             notifyError(`Could not get ${LABELS[what].toLowerCase()} for ${item.name}`, e);
+        }
+    }
+
+    /**
+     * Opens the website in the default browser (a new tab if it is running), then
+     * presses the browser extension's autofill shortcut, once the browser has focus.
+     */
+    async #logIn(item: VaultItem, website: string) {
+        this.#recents.add(`${RECENT_PREFIX}${item.id}`);
+        this.#launcher.close();
+        const browser = Gio.AppInfo.get_default_for_uri_scheme('https');
+        try {
+            const context = global.create_app_launch_context(0, -1);
+            if (browser)
+                browser.launch_uris([website], context);
+            else
+                Gio.AppInfo.launch_default_for_uri(website, context);
+        } catch (e) {
+            notifyError(`Could not open ${website}`, e);
+            return;
+        }
+
+        const keys = this.#settings.get_string(`${item.vault.id === 'bitwarden' ? 'bitwarden' : 'onepassword'}-autofill-keys`).trim();
+        if (!keys)
+            return;
+        await this.#timers.sleep(this.#settings.get_int('autofill-delay-ms'));
+        if (this.#destroyed)
+            return;
+        // Only press keys into the browser, never into whatever got focus instead.
+        const window = global.display.focus_window;
+        const app = window ? Shell.WindowTracker.get_default().get_window_app(window) : null;
+        if (!app || (browser && app.get_id() !== browser.get_id())) {
+            Main.notify(item.vault.name, `Opened ${item.name}, but the browser wasn’t focused to fill the login`);
+            return;
+        }
+        try {
+            await this.#typist.press(keys);
+        } catch (e) {
+            notifyError('Could not fill the login', e);
         }
     }
 

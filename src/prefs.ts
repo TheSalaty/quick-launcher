@@ -70,6 +70,22 @@ export default class QuickLauncherPreferences extends ExtensionPreferences {
         onePassword.add(unlock);
         page.add(onePassword);
 
+        const browser = new Adw.PreferencesGroup({
+            title: 'Log in on websites',
+            description: 'Enter on an item with a website opens it in your browser, then presses the autofill shortcut of the Bitwarden or 1Password browser extension. Set the same shortcut in the browser, e.g. chrome://extensions/shortcuts',
+        });
+        browser.add(switchRow(settings, 'browser-login', 'Open website and log in on Enter'));
+        for (const [key, title] of [
+            ['bitwarden-autofill-keys', 'Bitwarden extension “Autofill login” shortcut'],
+            ['onepassword-autofill-keys', '1Password extension autofill shortcut'],
+        ]) {
+            const row = new Adw.EntryRow({title, show_apply_button: true});
+            settings.bind(key, row, 'text', Gio.SettingsBindFlags.DEFAULT);
+            browser.add(row);
+        }
+        browser.add(spinRow(settings, 'autofill-delay-ms', 'Wait for the website', 'Milliseconds before the login is filled', 15000, 100));
+        page.add(browser);
+
         const output = new Adw.PreferencesGroup({title: 'Copy and type'});
         output.add(spinRow(settings, 'clear-clipboard-seconds', 'Clear clipboard after', 'Seconds, 0 = never', 3600, 5));
         output.add(switchRow(settings, 'scrub-clipboard-history', 'Remove secrets from Clipboard Indicator history'));

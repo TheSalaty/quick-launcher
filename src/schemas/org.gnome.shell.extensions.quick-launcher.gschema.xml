@@ -58,6 +58,22 @@
       <default>8</default>
       <summary>Delay between typed characters in milliseconds</summary>
     </key>
+    <key name="browser-login" type="b">
+      <default>true</default>
+      <summary>Enter on an item with a website opens it and fills the login through the browser extension</summary>
+    </key>
+    <key name="bitwarden-autofill-keys" type="s">
+      <default>'&lt;Control&gt;&lt;Shift&gt;l'</default>
+      <summary>The Bitwarden browser extension's "Autofill login" shortcut; empty = only open the website</summary>
+    </key>
+    <key name="onepassword-autofill-keys" type="s">
+      <default>'&lt;Control&gt;backslash'</default>
+      <summary>The 1Password browser extension's autofill shortcut; empty = only open the website</summary>
+    </key>
+    <key name="autofill-delay-ms" type="i">
+      <default>2500</default>
+      <summary>How long the website gets to load before its login is filled</summary>
+    </key>
     <key name="submit-after-password" type="b">
       <default>true</default>
       <summary>Press Enter after typing a password</summary>

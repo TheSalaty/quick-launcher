@@ -6,6 +6,11 @@ import St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 const CLIPBOARD_INDICATOR_UUID = 'clipboard-indicator@tudmotu.com';
+const MODIFIER_KEYS: Record<string, number | undefined> = {
+    control: Clutter.KEY_Control_L, ctrl: Clutter.KEY_Control_L, primary: Clutter.KEY_Control_L,
+    shift: Clutter.KEY_Shift_L, alt: Clutter.KEY_Alt_L, super: Clutter.KEY_Super_L,
+};
+
 const HELD_MODIFIERS = Clutter.ModifierType.SHIFT_MASK |
     Clutter.ModifierType.CONTROL_MASK |
     Clutter.ModifierType.MOD1_MASK |
@@ -139,6 +144,28 @@ export class Typist {
             if (delay > 0)
                 await this.#timers.sleep(delay);
         }
+    }
+
+    /** Presses a key combination such as `<Control><Shift>l`. */
+    async press(accelerator: string) {
+        await this.#waitForModifierRelease();
+        const key = Clutter[`KEY_${accelerator.replace(/<\w+>/g, '').trim()}` as keyof typeof Clutter] as number | undefined;
+        if (typeof key !== 'number')
+            throw new Error(`Unknown key in ${accelerator}`);
+        const modifiers = [...accelerator.matchAll(/<(\w+)>/g)].map(([, m]) => MODIFIER_KEYS[m.toLowerCase()]);
+        if (modifiers.includes(undefined))
+            throw new Error(`Unknown modifier in ${accelerator}`);
+
+        this.#device ??= global.stage.context.get_backend().get_default_seat()
+            .create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE);
+        const send = (keyval: number, state: Clutter.KeyState) =>
+            this.#device!.notify_keyval(GLib.get_monotonic_time(), keyval, state);
+        for (const m of modifiers)
+            send(m!, Clutter.KeyState.PRESSED);
+        send(key, Clutter.KeyState.PRESSED);
+        send(key, Clutter.KeyState.RELEASED);
+        for (const m of modifiers.reverse())
+            send(m!, Clutter.KeyState.RELEASED);
     }
 
     // The launcher is triggered by e.g. Ctrl+Enter; typing while Ctrl is
