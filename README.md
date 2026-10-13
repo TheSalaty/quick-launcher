@@ -97,7 +97,8 @@ usual. *Getting Started* stays available as a command.
 
 When the launcher opens, your recently used passwords, entries and emoji are listed first, then
 all commands. Typing searches everything at once and groups the results: a calculator answer on
-top, then passwords, Clockify entries and commands. Only items matching every word you typed are
+top, then whatever of it you used recently (newest first, so what you search often is right there), then passwords,
+Clockify entries and commands. Only items matching every word you typed are
 shown. Below them, *Use “…” with* starts a timer with the text or searches passwords or emoji
 for it.
 
