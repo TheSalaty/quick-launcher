@@ -18,6 +18,7 @@ like math, a unit conversion, a date or a time zone is answered right away.
   [`op` CLI](https://developer.1password.com/docs/cli/)), each entry tagged with its vault's logo
 - Unlock either vault in the launcher: type the master password there, or hand over to the
   1Password app
+- Items stay searchable while their vault is locked; using one asks to unlock it first
 - Copy or type passwords, usernames and TOTP codes. Typing works on Wayland without ydotool
 - Find active T3 Code sessions, see which are working and for how long, and open them in T3 Code
 - Start and stop Clockify timers from your recent entries, or a new one with `@project` and `#tag`
@@ -250,8 +251,10 @@ need the matching API URL, for example `https://euc1.clockify.me/api/v1`.
 
 ## Notes
 
-- Only names, usernames, folders and URLs are kept in memory. Passwords and TOTP codes are
-  fetched when you use them.
+- Only names, usernames, folders and URLs are kept, in memory and in
+  `~/.cache/quick-launcher/passwords.json` (readable only by you), so items show up while their
+  vault is locked. Passwords and TOTP codes are never stored; they are fetched when you use them.
+  Turning a vault off deletes its cached items.
 - The 1Password session from a typed master password expires after 30 minutes without use. The
   vault then shows up as locked again.
 - The Bitwarden pinentry bridge changes rbw's `pinentry` setting. Turning it off restores the

@@ -8,6 +8,7 @@ import {notifyError, osd, SecretClipboard, Typist, type Timers} from '../lib/out
 import type {Recents} from '../lib/recents.ts';
 import {SearchIndex, type Field} from '../lib/search.ts';
 import {setPinentryBridge} from './bridge.ts';
+import {ItemCache} from './cache.ts';
 import {OnePasswordVault} from './onepassword.ts';
 import {PinentryService, type PinRequest} from './pinentry.ts';
 import {RbwVault} from './rbw.ts';
@@ -89,6 +90,7 @@ export class Passwords {
     readonly #prompter: Prompter;
     readonly #settingsIds: number[];
     readonly #extensionDir: Gio.File;
+    readonly #cache = new ItemCache();
     #index = new SearchIndex<VaultItem>([], searchFields);
     #pinentry: PinentryService | null = null;
     #destroyed = false;
@@ -104,7 +106,7 @@ export class Passwords {
         this.#vaults = [new RbwVault(settings), new OnePasswordVault(settings)];
         for (const vault of this.#vaults) {
             this.#logos.set(vault, new Gio.FileIcon({file: iconsDir.get_child(vault.logo)}));
-            this.#states.set(vault, {status: 'checking', error: '', items: [], generation: 0});
+            this.#states.set(vault, {status: 'checking', error: '', items: vault.enabled ? this.#cache.items(vault) : [], generation: 0});
         }
         this.#clipboard = new SecretClipboard(settings, timers);
         this.#typist = new Typist(settings, timers);
@@ -232,6 +234,7 @@ export class Passwords {
             this.#setState(vault, {status: 'error', error: (e as Error).message});
             return;
         }
+        this.#cache.forget(vault);
         this.#setState(vault, {status: 'locked', items: []});
         await this.connect(vault);
     }
@@ -263,6 +266,7 @@ export class Passwords {
             icon: {name: KIND_ICONS[item.kind]},
             title: item.name || '(unnamed)',
             subtitle: [item.user, item.location].filter(Boolean).join('  ·  '),
+            accessory: this.#state(item.vault).status === 'unlocked' ? undefined : 'Locked',
             source: {icon: this.#logos.get(item.vault)!, styleClass: item.vault.logoClass},
             actions: [
                 {title: 'Copy Password', icon: 'edit-copy-symbolic', shortcut: 'copy-password', run: run('copy', 'password')},
@@ -374,7 +378,7 @@ export class Passwords {
             if (vault.enabled)
                 void this.#reload(vault);
             else
-                this.#setState(vault, {status: 'checking', items: []});
+                this.#forget(vault);
         }
     }
 
@@ -391,21 +395,23 @@ export class Passwords {
         try {
             if (!await vault.isUnlocked()) {
                 if (current() && this.#state(vault).status !== 'unlocking')
-                    this.#setState(vault, {status: 'locked', items: []});
+                    this.#setState(vault, {status: 'locked', items: this.#cache.items(vault)});
                 return;
             }
             const items = await vault.list();
-            if (current())
+            if (current()) {
                 this.#setState(vault, {status: 'unlocked', error: '', items});
+                this.#cache.set(vault, items);
+            }
         } catch (e) {
             if (!current())
                 return;
             if (e instanceof VaultLockedError) {
-                this.#setState(vault, {status: 'locked', items: []});
+                this.#setState(vault, {status: 'locked', items: this.#cache.items(vault)});
                 return;
             }
             console.error(`quick-launcher: Could not load ${vault.name}`, e);
-            this.#setState(vault, {status: 'error', error: (e as Error).message, items: []});
+            this.#setState(vault, {status: 'error', error: (e as Error).message, items: this.#cache.items(vault)});
         }
     }
 
@@ -464,7 +470,7 @@ export class Passwords {
     async #lockAll() {
         await Promise.all(this.#enabledVaults.map(v => v.lock().catch(e => notifyError(`Could not lock ${v.name}`, e))));
         for (const vault of this.#enabledVaults)
-            this.#setState(vault, {status: 'locked', items: []});
+            this.#setState(vault, {status: 'locked', items: this.#cache.items(vault)});
         this.#clipboard.clear();
         osd('system-lock-screen-symbolic', 'Vaults locked');
     }
@@ -490,8 +496,31 @@ export class Passwords {
 
     // --- Using an item ---
 
-    async #perform(item: VaultItem, verb: 'copy' | 'type', what: What) {
-        this.#recents.add(`${RECENT_PREFIX}${item.id}`);
+    /** A turned off vault forgets its cached items. */
+    #forget(vault: Vault) {
+        this.#cache.forget(vault);
+        this.#setState(vault, {status: 'checking', items: []});
+    }
+
+    /** Unlocks the item's vault if it is locked; resolves the current item, or null if it stayed locked. */
+    async #unlocked(item: VaultItem): Promise<VaultItem | null> {
+        if (this.#state(item.vault).status === 'unlocked')
+            return item;
+        await this.connect(item.vault);
+        if (this.#destroyed || this.#state(item.vault).status !== 'unlocked')
+            return null;
+        return this.#state(item.vault).items.find(i => i.id === item.id) ?? null;
+    }
+
+    async #perform(found: VaultItem, verb: 'copy' | 'type', what: What, retry = true) {
+        this.#recents.add(`${RECENT_PREFIX}${found.id}`);
+        // The username is cached, everything else needs the vault unlocked; that asks right in the launcher.
+        const item = what === 'user' ? found : await this.#unlocked(found);
+        if (!item) {
+            if (!this.#destroyed && this.#state(found.vault).status === 'unlocked')
+                Main.notify(found.vault.name, `${found.name} is no longer in the vault`);
+            return;
+        }
         this.#launcher.close();
         try {
             const value = await this.#valueOf(item, what);
@@ -512,8 +541,10 @@ export class Passwords {
             }
         } catch (e) {
             if (e instanceof VaultLockedError) {
-                this.#setState(item.vault, {status: 'locked', items: []});
-                Main.notify(item.vault.name, 'The vault is locked. Open the launcher to unlock it.');
+                // It locked itself since the last check: unlock and try once more.
+                this.#setState(item.vault, {status: 'locked', items: this.#cache.items(item.vault)});
+                if (retry)
+                    await this.#perform(item, verb, what, false);
                 return;
             }
             notifyError(`Could not get ${LABELS[what].toLowerCase()} for ${item.name}`, e);
