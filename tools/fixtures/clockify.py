@@ -32,7 +32,7 @@ class H(BaseHTTPRequestHandler):
         self.send_response(200); self.send_header('Content-Type', 'application/json'); self.end_headers(); self.wfile.write(data)
     def do_GET(self):
         p = self.path.removeprefix('/api/v1')
-        if p.startswith('/user'): return self.send({'id': 'u1', 'activeWorkspace': 'w1'})
+        if p.startswith('/user'): return self.send({'id': 'u1', 'name': 'Alex Example', 'activeWorkspace': 'w1'})
         if '/projects' in p: return self.send(projects)
         if '/tags' in p: return self.send(tags)
         if 'in-progress=true' in p: return self.send([e for e in entries if not e['timeInterval']['end']])

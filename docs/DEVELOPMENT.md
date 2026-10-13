@@ -51,6 +51,15 @@ it together: the calculator answer first, then a command whose name starts with 
 passwords, Clockify entries, the other commands and fallbacks. In the start view every word of
 the query has to match, so `2 min in year` doesn't list everything containing "in".
 
+`Onboarding` (`src/onboarding.ts`) is the *Getting Started* view. `Root.open()` pushes it on top
+of the start view until the `onboarding-done` key is set, which happens when it is first shown;
+`enable()` also posts a notification until then. Its rows read state the providers already
+have: `Passwords.vaults()` (with `Vault.installed`, from the CLI on PATH), `Clockify.configured`
+and `.error`, `T3Code.available`. *Connect* calls `Passwords.connect()`, which turns the vault
+on, runs `Vault.setUp()` (rbw's account email, asked with the visible `Launcher.ask()` prompt),
+installs the pinentry bridge for rbw, and unlocks. For Clockify, `ClockifyApi.verify()` checks
+a key against `/user` before it is saved. A non-empty query is passed to the start view's search.
+
 Styling comes from the shell theme. The window is a `.popup-menu-content`, rows are
 `.popup-menu-item`s and the search field is a plain `StEntry`, so light and dark styles and the
 accent color follow the system. Secondary text is dimmed with actor opacity instead of colors.
@@ -118,7 +127,8 @@ an unlock row.
 ### Bitwarden and the pinentry bridge
 
 rbw has no way to take the master password other than running a pinentry program, configured
-with `rbw config set pinentry`. The bridge, installed by the preferences into
+with `rbw config set pinentry`. The bridge (`src/passwords/bridge.ts`), installed by the
+preferences or by *Connect Bitwarden* into
 `~/.local/share/quick-launcher/`, is:
 
 - `pinentry`: a shell wrapper. If the extension answers `Ping` on
@@ -148,7 +158,8 @@ and crops each shot to the popup plus a margin.
 
 `rbw` and `op` are replaced by the scripts in `tools/fixtures`, which serve the JSON next to
 them (the 1Password master password is `hunter2`). `tools/fixtures/clockify.py` is a fake
-Clockify API on `127.0.0.1:8765`.
+Clockify API on `127.0.0.1:8765`. The last scene resets everything and runs *Getting Started*:
+it connects Bitwarden (email, then master password) and Clockify through the launcher.
 
 ```sh
 make screenshots       # writes docs/*.png (QL_SCHEME=prefer-light for the light style)

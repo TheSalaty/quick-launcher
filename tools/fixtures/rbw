@@ -19,7 +19,9 @@ case "$1" in
   code) echo 123456 ;;
   config)
     case "$2" in
-      show) echo "{\"pinentry\":\"$(cat "$S/rbw-pinentry" 2>/dev/null || echo pinentry)\"}" ;;
-      set) echo "$4" > "$S/rbw-pinentry" ;;
+      show) printf '{"email":%s,"pinentry":"%s"}\n' \
+        "$( [ -f "$S/rbw-email" ] && printf '"%s"' "$(cat "$S/rbw-email")" || echo null)" \
+        "$(cat "$S/rbw-pinentry" 2>/dev/null || echo pinentry)" ;;
+      set) echo "$4" > "$S/rbw-$3" ;;
     esac ;;
 esac

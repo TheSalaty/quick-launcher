@@ -64,6 +64,7 @@ class Cache {
 
 /** Starts Clockify timers from recent entries or a new description. */
 export class Clockify {
+    readonly #settings: Gio.Settings;
     readonly #launcher: Launcher;
     readonly #recents: Recents;
     readonly #api: ClockifyApi;
@@ -74,10 +75,12 @@ export class Clockify {
     #account: string | null = null;
     #loading = false;
     #destroyed = false;
+    #error: string | null = null;
 
     readonly view: View;
 
     constructor(settings: Gio.Settings, launcher: Launcher, recents: Recents) {
+        this.#settings = settings;
         this.#launcher = launcher;
         this.#recents = recents;
         this.#api = new ClockifyApi(settings);
@@ -103,6 +106,28 @@ export class Clockify {
 
     get configured(): boolean {
         return this.#api.configured;
+    }
+
+    /** Why the last refresh failed, if it did */
+    get error(): string | null {
+        return this.#error;
+    }
+
+    /** Saves an API key once Clockify accepts it; resolves the account's name. */
+    async connect(key: string): Promise<string> {
+        const name = await this.#api.verify(key);
+        this.#settings.set_string('clockify-api-key', key);
+        this.#error = null;
+        this.load(true);
+        return name;
+    }
+
+    disconnect() {
+        this.#settings.reset('clockify-api-key');
+        this.#index = new SearchIndex<Task>([], searchFields);
+        this.#account = null;
+        this.#error = null;
+        this.#launcher.refresh();
     }
 
     // --- What the launcher shows ---
@@ -270,6 +295,7 @@ export class Clockify {
             const tasks = distinctTasks(entries, projects, tags);
 
             this.#account = account;
+            this.#error = null;
             this.#setData(tasks, projects, tags);
             if (this.#launcher.view === this.view)
                 this.#launcher.setStatus(null);
@@ -280,6 +306,8 @@ export class Clockify {
             if (this.#destroyed)
                 return;
             console.error('quick-launcher: Clockify request failed', e);
+            this.#error = (e as Error).message;
+            this.#launcher.refresh();
             if (this.#launcher.view === this.view)
                 this.#launcher.setStatus(`Clockify: ${(e as Error).message}`);
         } finally {

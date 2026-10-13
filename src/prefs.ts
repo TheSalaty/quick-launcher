@@ -1,13 +1,13 @@
 import Adw from 'gi://Adw';
 import Gdk from 'gi://Gdk';
 import Gio from 'gi://Gio';
-import GLib from 'gi://GLib';
 import Gtk from 'gi://Gtk';
 
 import {ExtensionPreferences} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 
 import {CURRENCIES} from './calc/units.ts';
-import {findProgram, run} from './lib/subprocess.ts';
+import {findProgram} from './lib/subprocess.ts';
+import {setPinentryBridge} from './passwords/bridge.ts';
 
 export default class QuickLauncherPreferences extends ExtensionPreferences {
     override async fillPreferencesWindow(window: Adw.PreferencesWindow) {
@@ -72,11 +72,7 @@ export default class QuickLauncherPreferences extends ExtensionPreferences {
         return page;
     }
 
-    /**
-     * rbw always asks through a pinentry program. This points it at a small
-     * script that forwards the prompt to the launcher over D-Bus (falling
-     * back to the previous pinentry when the extension isn't running).
-     */
+    /** Answers rbw's password prompt in the launcher; see setPinentryBridge(). */
     #pinentryRow(settings: Gio.Settings): Adw.SwitchRow {
         const row = new Adw.SwitchRow({
             title: 'Enter master password in the launcher',
@@ -87,7 +83,7 @@ export default class QuickLauncherPreferences extends ExtensionPreferences {
             if (row.active === settings.get_boolean('rbw-pinentry-bridge'))
                 return;
             try {
-                await this.#setPinentryBridge(settings, row.active);
+                await setPinentryBridge(settings, row.active, this.dir);
                 row.remove_css_class('error');
             } catch (e) {
                 console.error('quick-launcher: Could not configure rbw pinentry', e);
@@ -96,55 +92,12 @@ export default class QuickLauncherPreferences extends ExtensionPreferences {
                 row.active = settings.get_boolean('rbw-pinentry-bridge');
             }
         });
+        // Getting Started in the launcher turns it on too.
+        const id = settings.connect('changed::rbw-pinentry-bridge', () => {
+            row.active = settings.get_boolean('rbw-pinentry-bridge');
+        });
+        row.connect('destroy', () => settings.disconnect(id));
         return row;
-    }
-
-    async #setPinentryBridge(settings: Gio.Settings, enabled: boolean) {
-        const rbw = settings.get_string('rbw-path') || 'rbw';
-        const dir = GLib.build_filenamev([GLib.get_user_data_dir(), 'quick-launcher']);
-        const wrapper = GLib.build_filenamev([dir, 'pinentry']);
-
-        if (!enabled) {
-            await run([rbw, 'config', 'set', 'pinentry', settings.get_string('rbw-pinentry-fallback') || 'pinentry']);
-            settings.set_boolean('rbw-pinentry-bridge', false);
-            return;
-        }
-
-        const {stdout} = await run([rbw, 'config', 'show'], {check: false});
-        let current = 'pinentry';
-        try {
-            current = JSON.parse(stdout).pinentry || current;
-        } catch {}
-        if (current !== wrapper)
-            settings.set_string('rbw-pinentry-fallback', current);
-
-        const gjs = findProgram('gjs');
-        const gdbus = findProgram('gdbus');
-        if (!gjs || !gdbus)
-            throw new Error('gjs and gdbus are needed for the bridge');
-
-        GLib.mkdir_with_parents(dir, 0o700);
-        const script = GLib.build_filenamev([dir, 'pinentry.js']);
-        Gio.File.new_for_path(GLib.build_filenamev([this.path, 'bin', 'pinentry.js']))
-            .copy(Gio.File.new_for_path(script), Gio.FileCopyFlags.OVERWRITE, null, null);
-
-        const q = GLib.shell_quote;
-        const fallback = settings.get_string('rbw-pinentry-fallback') || 'pinentry';
-        const content = `#!/bin/sh
-# Installed by the Quick Launcher GNOME extension: asks for rbw's master
-# password in the launcher, or uses the regular pinentry if it isn't running.
-if ${q(gdbus)} call --session --dest org.gnome.Shell \\
-    --object-path /de/falcondev/QuickLauncher/Pinentry \\
-    --method de.falcondev.QuickLauncher.Pinentry.Ping >/dev/null 2>&1; then
-  exec ${q(gjs)} -m ${q(script)}
-fi
-exec ${q(fallback)} "$@"
-`;
-        GLib.file_set_contents(wrapper, content);
-        GLib.chmod(wrapper, 0o755);
-
-        await run([rbw, 'config', 'set', 'pinentry', wrapper]);
-        settings.set_boolean('rbw-pinentry-bridge', true);
     }
 }
 

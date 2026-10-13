@@ -43,6 +43,8 @@ set_ql op-path "$HERE/fixtures/op"
 set_ql onepassword-unlock password
 set_ql clockify-api-key screenshot
 set_ql clockify-api-url "http://127.0.0.1:$PORT/api/v1"
+set_ql onboarding-done true
+echo julian@falcondev.de > "$QL_FIXTURE_STATE/rbw-email"
 
 # Fake T3 Code: a state database and a handler for t3code:// links.
 mkdir -p "$SANDBOX/t3code" "$SANDBOX/data/applications"
@@ -132,6 +134,35 @@ shot unlock
 type_text hunter2
 keys Return
 sleep 1.5
+keys Escape
+
+# First run: nothing connected yet, so the launcher opens with Getting Started.
+# Then connect Bitwarden (email, master password) and Clockify from there.
+keys Escape
+rm -f "$QL_FIXTURE_STATE/rbw-unlocked" "$QL_FIXTURE_STATE/rbw-email"
+set_ql clockify-api-key ''
+set_ql onepassword-enabled false
+set_ql onboarding-done false
+sleep 0.5
+keys Control_L Shift_L Return
+sleep 1.5
+shot onboarding
+keys Return
+sleep 0.8
+type_text julian@falcondev.de
+keys Return
+sleep 2
+type_text hunter2
+keys Return
+sleep 1.5
+keys Down
+keys Down
+keys Return
+sleep 0.5
+type_text screenshot
+keys Return
+sleep 1.5
+keys Escape
 keys Escape
 
 echo "--- shell log (extension-relevant lines) ---"

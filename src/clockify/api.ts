@@ -54,7 +54,12 @@ export class ClockifyApi {
         return GLib.compute_checksum_for_string(GLib.ChecksumType.SHA256, this.#credentials, -1) ?? '';
     }
 
-    async #request<T>(method: string, path: string, {query = {}, body}: {query?: Record<string, string | number | boolean>; body?: unknown} = {}): Promise<T> {
+    async #request<T>(method: string, path: string, {query = {}, body, key}: {
+        query?: Record<string, string | number | boolean>;
+        body?: unknown;
+        /** Another API key than the saved one */
+        key?: string;
+    } = {}): Promise<T> {
         const base = this.#settings.get_string('clockify-api-url').replace(/\/+$/, '');
         const params = Object.entries(query)
             .map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
@@ -62,7 +67,7 @@ export class ClockifyApi {
         if (!message)
             throw new ClockifyError(`Invalid API URL: ${base}`);
 
-        message.request_headers.append('X-Api-Key', this.#settings.get_string('clockify-api-key'));
+        message.request_headers.append('X-Api-Key', key ?? this.#settings.get_string('clockify-api-key'));
         if (body !== undefined) {
             message.set_request_body_from_bytes('application/json',
                 new GLib.Bytes(new TextEncoder().encode(JSON.stringify(body))));
@@ -80,6 +85,12 @@ export class ClockifyApi {
             throw new ClockifyError(`${status} ${detail}`.trim());
         }
         return (text ? JSON.parse(text) : null) as T;
+    }
+
+    /** Checks an API key before it is saved; resolves the account's name. */
+    async verify(key: string): Promise<string> {
+        const user = await this.#request<{name?: string; email?: string}>('GET', '/user', {key});
+        return user.name || user.email || 'Clockify';
     }
 
     #user(): Promise<Me> {
