@@ -114,6 +114,9 @@ the desktop behind it is blurred.
 | <kbd>Esc</kbd> | go back, or close |
 | <kbd>Backspace</kbd> on an empty field | go back |
 
+These are the defaults. Every shortcut, in the launcher and for every action, can be changed on
+the *Shortcuts* page of the settings. A shortcut can also have several keys, or be turned off.
+
 Commands like *Search Passwords*, *Start Timer* and *Search Emoji & Symbols* open their own list;
 <kbd>Esc</kbd> brings you back to the start.
 
@@ -229,7 +232,12 @@ German names both work. <kbd>Enter</kbd> copies the emoji.
 gnome-extensions prefs quick-launcher@julian.falcondev.de
 ```
 
-Or run *Quick Launcher Settings* from the launcher. You can change the shortcut, turn each
+Or run *Quick Launcher Settings* from the launcher. The *Shortcuts* page lists every shortcut:
+the two that open the launcher anywhere in GNOME, and all keys inside it. Click one and press the
+new keys. Keys that type text need <kbd>Ctrl</kbd>, <kbd>Alt</kbd> or <kbd>Super</kbd>. Two shortcuts
+that use the same keys are marked, and the arrow next to a shortcut resets it.
+
+Beyond shortcuts, you can turn each
 password manager on or off, set the rbw and op binaries, the Bitwarden account email and server, the 1Password account and unlock
 method, the default currency, whether to search T3 Code sessions (and T3 Code's data directory),
 how long copied secrets stay on the clipboard, and the Clockify API key. An optional second shortcut opens Clockify directly, and *Clear* empties the list of recently

@@ -7,23 +7,21 @@ import St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {ensureActorVisibleInScrollView} from 'resource:///org/gnome/shell/misc/animationUtils.js';
 
+import {
+    accelerators, keyName, matches, parseAccelerator, shortcutLabel, shortcutText,
+    type Overrides, type Shortcut, type ShortcutId,
+} from './shortcuts.ts';
+
 const MAX_ROWS = 60;
 /** Opacity of secondary text */
 const DIM = 150;
 const WIDTH = 720;
 
-export interface Shortcut {
-    /** Lowercase character, or 'return' */
-    key: string;
-    ctrl?: boolean;
-    shift?: boolean;
-    alt?: boolean;
-}
-
 export interface Action {
     title: string;
     icon?: string;
-    shortcut?: Shortcut;
+    /** Its keys are set in the preferences, see shortcuts.ts */
+    shortcut?: ShortcutId;
     destructive?: boolean;
     run(): void;
 }
@@ -95,15 +93,6 @@ interface Prompt {
     standalone: boolean;
 }
 
-export function shortcutLabel(s: Shortcut): string[] {
-    return [
-        ...s.ctrl ? ['Ctrl'] : [],
-        ...s.alt ? ['Alt'] : [],
-        ...s.shift ? ['⇧'] : [],
-        s.key === 'return' ? '↵' : s.key.toUpperCase(),
-    ];
-}
-
 /**
  * A Spotlight-style popup with a stack of views. Views return sections of
  * items; every item has actions, the first runs on Enter and all of them
@@ -128,6 +117,10 @@ export class Launcher {
     readonly #rows: Row[] = [];
     readonly #headers: St.Label[] = [];
     readonly #panelRows: St.BoxLayout[] = [];
+    readonly #actionsKeys: St.BoxLayout;
+    readonly #settings: Gio.Settings;
+    readonly #settingsId: number;
+    #overrides: Overrides = {};
     #stack: Frame[] = [];
     #items: Item[] = [];
     #selected = 0;
@@ -141,7 +134,11 @@ export class Launcher {
     /** The user moved the selection, so refreshes keep it on the same item. */
     #userSelected = false;
 
-    constructor() {
+    constructor(settings: Gio.Settings) {
+        this.#settings = settings;
+        this.#settingsId = settings.connect('changed::launcher-shortcuts', () => this.#loadShortcuts());
+        this.#loadShortcuts();
+
         this.#backdrop = new St.Widget({
             reactive: true,
             visible: false,
@@ -240,7 +237,8 @@ export class Launcher {
         this.#actionsHint = new St.BoxLayout({style_class: 'ql-footer-actions', y_align: Clutter.ActorAlign.CENTER});
         this.#actionsHint.add_child(new St.Widget({style_class: 'popup-separator-menu-item-separator ql-footer-separator', y_align: Clutter.ActorAlign.CENTER}));
         this.#actionsHint.add_child(new St.Label({style_class: 'ql-footer-action', text: 'Actions', y_align: Clutter.ActorAlign.CENTER}));
-        this.#actionsHint.add_child(keys(['Ctrl', 'K']));
+        this.#actionsKeys = keys([]);
+        this.#actionsHint.add_child(this.#actionsKeys);
         for (const child of [this.#footerIcon, this.#footerText, this.#primaryLabel, this.#primaryKeys, this.#actionsHint])
             footer.add_child(child);
         this.#box.add_child(footer);
@@ -346,6 +344,30 @@ export class Launcher {
         this.#openPanel();
     }
 
+    /** "Ctrl+Shift+C" for a shortcut, or '' when it is turned off. */
+    keyText(id: ShortcutId): string {
+        const accelerator = accelerators(id, this.#overrides)[0];
+        return accelerator ? shortcutText(accelerator) : '';
+    }
+
+    #loadShortcuts() {
+        this.#overrides = this.#settings.get_value('launcher-shortcuts').deepUnpack() as Overrides;
+    }
+
+    #keys(id: ShortcutId): Shortcut[] {
+        return accelerators(id, this.#overrides).map(parseAccelerator).filter(s => s !== null);
+    }
+
+    #is(id: ShortcutId, pressed: Shortcut): boolean {
+        return this.#keys(id).some(s => matches(s, pressed));
+    }
+
+    /** Key caps of a shortcut's first keys, [] when it is turned off. */
+    #label(id: ShortcutId): string[] {
+        const first = this.#keys(id)[0];
+        return first ? shortcutLabel(first) : [];
+    }
+
     /** Shows a message in the footer instead of the view title. */
     setStatus(text: string | null) {
         this.#status = text;
@@ -390,7 +412,7 @@ export class Launcher {
         this.#footerText.text = description ?? `Enter to ${action.toLowerCase()}, Esc to cancel`;
         this.#primaryLabel.text = action;
         this.#primaryLabel.show();
-        setKeys(this.#primaryKeys, ['↵']);
+        setKeys(this.#primaryKeys, this.#label('run'));
         this.#actionsHint.hide();
         return promise;
     }
@@ -512,7 +534,12 @@ export class Launcher {
         actor.connect('button-release-event', (_actor, event: Clutter.Event) => {
             this.#userSelected = true;
             this.#select(index);
-            this.#runShortcut({key: 'return', ...modifiers(event)});
+            const mods = modifiers(event);
+            // A plain click is the main action, a click with modifiers works like Enter with them.
+            if (mods.ctrl || mods.shift || mods.alt || mods.super)
+                this.#runShortcut({key: 'return', ...mods});
+            else
+                this.selected?.actions[0]?.run();
             return Clutter.EVENT_STOP;
         });
 
@@ -583,20 +610,20 @@ export class Launcher {
         this.#footerText.text = this.#status ?? view?.title ?? '';
         this.#primaryLabel.text = primary?.title ?? '';
         this.#primaryLabel.visible = !!primary;
-        setKeys(this.#primaryKeys, primary ? ['↵'] : []);
-        this.#actionsHint.visible = this.#allActions().length > 1;
+        setKeys(this.#primaryKeys, primary ? this.#label('run') : []);
+        setKeys(this.#actionsKeys, this.#label('actions'));
+        this.#actionsHint.visible = this.#allActions().length > 1 && this.#keys('actions').length > 0;
     }
 
     #allActions(): Action[] {
         return [...this.selected?.actions ?? [], ...this.view?.actions?.() ?? []];
     }
 
-    /** Runs the action whose shortcut matches; plain Enter is the primary action. */
-    #runShortcut(keys: Shortcut): boolean {
-        const plainEnter = keys.key === 'return' && !keys.ctrl && !keys.shift && !keys.alt;
-        const action = plainEnter
+    /** Runs the action whose shortcut matches, or the main one for "run". */
+    #runShortcut(pressed: Shortcut): boolean {
+        const action = this.#is('run', pressed)
             ? this.selected?.actions[0]
-            : this.#allActions().find(a => a.shortcut && matches(a.shortcut, keys));
+            : this.#allActions().find(a => a.shortcut && this.#is(a.shortcut, pressed));
         if (!action)
             return false;
         action.run();
@@ -641,7 +668,7 @@ export class Launcher {
             const [icon, label, shortcut] = row.get_children() as [St.Icon, St.Label, St.BoxLayout];
             icon.icon_name = action.icon ?? 'system-run-symbolic';
             label.text = action.title;
-            setKeys(shortcut, action.shortcut ? shortcutLabel(action.shortcut) : action === primary ? ['↵'] : []);
+            setKeys(shortcut, action === primary ? this.#label('run') : action.shortcut ? this.#label(action.shortcut) : []);
             toggleClass(row, 'ql-panel-destructive', !!action.destructive);
             this.#panelList.add_child(row);
         });
@@ -679,14 +706,14 @@ export class Launcher {
 
     #onKeyPress(event: Clutter.Event): boolean {
         const symbol = event.get_key_symbol();
-        const mods = modifiers(event);
-        const isEnter = symbol === Clutter.KEY_Return || symbol === Clutter.KEY_KP_Enter || symbol === Clutter.KEY_ISO_Enter;
-        const char = String.fromCodePoint(Clutter.keysym_to_unicode(symbol) || 0).toLowerCase();
+        const [lower] = Clutter.keyval_convert_case(symbol);
+        const pressed: Shortcut = {key: keyName(Clutter.keyval_name(lower) ?? ''), ...modifiers(event)};
+        const plain = !pressed.ctrl && !pressed.shift && !pressed.alt && !pressed.super;
 
         if (this.#prompt) {
-            if (symbol === Clutter.KEY_Escape)
+            if ((plain && pressed.key === 'escape') || this.#is('back', pressed))
                 this.#resolvePrompt(null);
-            else if (isEnter)
+            else if ((plain && pressed.key === 'return') || this.#is('run', pressed))
                 this.#resolvePrompt(this.#entry.get_text());
             else
                 return Clutter.EVENT_PROPAGATE;
@@ -694,58 +721,52 @@ export class Launcher {
         }
 
         if (this.#panelActions) {
-            if (symbol === Clutter.KEY_Escape || (mods.ctrl && char === 'k'))
+            if (this.#is('back', pressed) || this.#is('actions', pressed))
                 this.#closePanel();
-            else if (isEnter)
+            else if (this.#is('run', pressed))
                 this.#runPanel();
-            else if (symbol === Clutter.KEY_Up || (mods.ctrl && char === 'p'))
+            else if (this.#is('previous', pressed))
                 this.#selectPanel(this.#panelSelected - 1);
-            else if (symbol === Clutter.KEY_Down || symbol === Clutter.KEY_Tab || (mods.ctrl && char === 'n'))
+            else if (this.#is('next', pressed))
                 this.#selectPanel(this.#panelSelected + 1);
             else
                 return Clutter.EVENT_PROPAGATE;
             return Clutter.EVENT_STOP;
         }
 
-        if (isEnter) {
-            this.#runShortcut({key: 'return', ...mods});
-            return Clutter.EVENT_STOP;
-        }
-        if (mods.ctrl && char === 'k') {
+        if (this.#is('actions', pressed)) {
             this.#openPanel();
             return Clutter.EVENT_STOP;
         }
 
-        const moves: Partial<Record<number, number>> = {
-            [Clutter.KEY_Up]: -1, [Clutter.KEY_KP_Up]: -1, [Clutter.KEY_ISO_Left_Tab]: -1,
-            [Clutter.KEY_Down]: 1, [Clutter.KEY_KP_Down]: 1, [Clutter.KEY_Tab]: 1,
-            [Clutter.KEY_Page_Up]: -8, [Clutter.KEY_Page_Down]: 8,
-        };
-        const move = moves[symbol] ?? (mods.ctrl && char === 'p' ? -1 : mods.ctrl && char === 'n' ? 1 : undefined);
+        const moves: [ShortcutId, number][] = [['previous', -1], ['next', 1], ['page-up', -8], ['page-down', 8]];
+        const move = moves.find(([id]) => this.#is(id, pressed))?.[1];
         if (move !== undefined) {
             this.#userSelected = true;
             this.#select(this.#selected + move);
             return Clutter.EVENT_STOP;
         }
 
-        if (symbol === Clutter.KEY_Escape) {
+        if (this.#is('back', pressed)) {
             this.pop();
             return Clutter.EVENT_STOP;
         }
-        if (symbol === Clutter.KEY_BackSpace && this.#entry.get_text() === '' && this.#stack.length > 1) {
+        if (this.#is('back-empty', pressed) && this.#entry.get_text() === '' && this.#stack.length > 1) {
             this.pop();
             return Clutter.EVENT_STOP;
         }
 
         // Ctrl+C with text selected in the search field copies that text.
-        if (mods.ctrl && char === 'c' && this.#entry.clutter_text.get_selection())
+        if (pressed.key === 'c' && pressed.ctrl && !pressed.shift && !pressed.alt && this.#entry.clutter_text.get_selection())
             return Clutter.EVENT_PROPAGATE;
-        if ((mods.ctrl || mods.alt) && char && this.#runShortcut({key: char, ...mods}))
+        if (this.#runShortcut(pressed))
             return Clutter.EVENT_STOP;
-        return Clutter.EVENT_PROPAGATE;
+        // Enter does nothing else; don't let it reach the entry.
+        return pressed.key === 'return' ? Clutter.EVENT_STOP : Clutter.EVENT_PROPAGATE;
     }
 
     destroy() {
+        this.#settings.disconnect(this.#settingsId);
         this.close();
         this.#backdrop.destroy();
     }
@@ -771,16 +792,12 @@ function toggleClass(actor: St.Widget, name: string, on: boolean) {
         actor.remove_style_class_name(name);
 }
 
-function matches(shortcut: Shortcut, keys: Shortcut): boolean {
-    return shortcut.key === keys.key && !!shortcut.ctrl === !!keys.ctrl &&
-        !!shortcut.shift === !!keys.shift && !!shortcut.alt === !!keys.alt;
-}
-
 function modifiers(event: Clutter.Event) {
     const state = event.get_state();
     return {
         ctrl: (state & Clutter.ModifierType.CONTROL_MASK) !== 0,
         shift: (state & Clutter.ModifierType.SHIFT_MASK) !== 0,
         alt: (state & Clutter.ModifierType.MOD1_MASK) !== 0,
+        super: (state & (Clutter.ModifierType.SUPER_MASK | Clutter.ModifierType.MOD4_MASK)) !== 0,
     };
 }

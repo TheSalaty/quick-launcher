@@ -63,6 +63,11 @@
       <summary>Press Enter after typing a password</summary>
     </key>
 
+    <key name="launcher-shortcuts" type="a{sas}">
+      <default>{}</default>
+      <summary>Shortcuts inside the launcher that differ from the defaults</summary>
+      <description>Maps a shortcut id (see src/lib/shortcuts.ts) to GTK accelerators; an empty list turns it off.</description>
+    </key>
     <key name="onboarding-done" type="b">
       <default>false</default>
       <summary>Getting Started was shown; until then the launcher opens with it</summary>

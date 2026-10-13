@@ -2,8 +2,8 @@ import Gio from 'gi://Gio';
 
 import type {Clockify} from './clockify/clockify.ts';
 import {CLOCKIFY_COLOR} from './clockify/clockify.ts';
-import {shortcutText} from './lib/accelerator.ts';
-import type {Item, Launcher, Section, View} from './lib/launcher.ts';
+import {shortcutText, type ShortcutId} from './lib/shortcuts.ts';
+import type {Action, Item, Launcher, Section, View} from './lib/launcher.ts';
 import {notifyError, osd} from './lib/output.ts';
 import type {Passwords, VaultInfo} from './passwords/passwords.ts';
 import {PASSWORDS_COLOR} from './passwords/passwords.ts';
@@ -79,15 +79,16 @@ export class Onboarding {
 
     #vaultRow({vault, logo, status, error, items, server}: VaultInfo): Item {
         const base = {id: `onboarding:${vault.id}`, icon: {gicon: logo, color: vault.color}};
-        const turnOff = {
-            title: `Don’t Use ${vault.name}`, icon: 'process-stop-symbolic', shortcut: {key: 'd', ctrl: true},
+        const turnOff: Action = {
+            title: `Don’t Use ${vault.name}`, icon: 'process-stop-symbolic', shortcut: 'vault-off',
             run: () => this.#p.passwords.setEnabled(vault, false),
         };
-        const changeServer = vault.askServer ? [{
-            title: 'Use Another Server…', icon: 'network-server-symbolic', shortcut: {key: 's', ctrl: true},
+        const changeServer: Action[] = vault.askServer ? [{
+            title: 'Use Another Server…', icon: 'network-server-symbolic', shortcut: 'vault-server',
             run: () => void this.#p.passwords.changeServer(vault),
         }] : [];
         const host = server.replace(/^[a-z]+:\/\//i, '');
+        const keys = (id: ShortcutId) => this.#p.launcher.keyText(id);
 
         if (!vault.installed) {
             return {
@@ -103,7 +104,7 @@ export class Onboarding {
             return {
                 ...base,
                 title: vault.name,
-                subtitle: [`${items} items`, host, 'Enter or Ctrl+Shift+C copies a password, Ctrl+C the username']
+                subtitle: [`${items} items`, host, copyHint(keys('run'), keys('copy-password'), keys('copy-username'))]
                     .filter(Boolean).join(' · '),
                 accessory: '✓ Connected',
                 accessoryActive: true,
@@ -124,7 +125,7 @@ export class Onboarding {
             ...base,
             title: `Connect ${vault.name}`,
             subtitle: status === 'error' ? error : vault.id === 'bitwarden'
-                ? `Through rbw${host ? ` · ${host}` : ''} · self-hosted works too, Ctrl+S`
+                ? [`Through rbw${host ? ` · ${host}` : ''}`, `self-hosted works too${keys('vault-server') ? `, ${keys('vault-server')}` : ''}`].join(' · ')
                 : 'Through the 1Password app or your master password',
             accessory: status === 'error' ? 'Failed' : undefined,
             actions: [connect, ...changeServer, turnOff],
@@ -134,8 +135,8 @@ export class Onboarding {
     #clockifyRow(): Item {
         const {clockify, launcher} = this.#p;
         const base = {id: 'onboarding:clockify', icon: {name: 'alarm-symbolic', color: CLOCKIFY_COLOR}};
-        const openKeys = {
-            title: 'Open Clockify API Keys', icon: 'web-browser-symbolic', shortcut: {key: 'o', ctrl: true},
+        const openKeys: Action = {
+            title: 'Open Clockify API Keys', icon: 'web-browser-symbolic', shortcut: 'clockify-keys',
             run: () => this.#openUri(CLOCKIFY_KEYS_URL),
         };
 
@@ -148,7 +149,7 @@ export class Onboarding {
                 accessoryActive: true,
                 actions: [
                     {title: 'Start Timer', icon: 'media-playback-start-symbolic', run: () => launcher.push(clockify.view)},
-                    {title: 'Disconnect', icon: 'process-stop-symbolic', destructive: true, shortcut: {key: 'd', ctrl: true}, run: () => clockify.disconnect()},
+                    {title: 'Disconnect', icon: 'process-stop-symbolic', destructive: true, shortcut: 'clockify-disconnect', run: () => clockify.disconnect()},
                 ],
             };
         }
@@ -221,13 +222,13 @@ export class Onboarding {
                 id: 'onboarding:example-actions',
                 icon: {name: 'view-more-symbolic', color: PASSWORDS_COLOR},
                 title: 'More Actions',
-                subtitle: 'Ctrl+K lists every action of the selected item, with its shortcut',
-                accessory: 'Ctrl+K',
+                subtitle: `${launcher.keyText('actions') || 'The action panel'} lists every action of the selected item, with its shortcut`,
+                accessory: launcher.keyText('actions'),
                 actions: [
                     {title: 'Show Actions', icon: 'view-more-symbolic', run: () => launcher.showActions()},
-                    {title: 'Search Passwords', icon: 'dialog-password-symbolic', shortcut: {key: 'p', alt: true}, run: () => launcher.push(passwords.view)},
+                    {title: 'Search Passwords', icon: 'dialog-password-symbolic', shortcut: 'search-passwords', run: () => launcher.push(passwords.view)},
                     ...clockify.configured
-                        ? [{title: 'Start Timer', icon: 'alarm-symbolic', shortcut: {key: 't', alt: true}, run: () => launcher.push(clockify.view)}]
+                        ? [{title: 'Start Timer', icon: 'alarm-symbolic', shortcut: 'start-timer', run: () => launcher.push(clockify.view)} satisfies Action]
                         : [],
                 ],
             },
@@ -242,4 +243,13 @@ export class Onboarding {
             notifyError(`Could not open ${uri}`, e);
         }
     }
+}
+
+/** "Enter or Ctrl+Shift+C copies a password, Ctrl+C the username", for the keys that are set */
+function copyHint(run: string, password: string, username: string): string {
+    const passwordKeys = [run, password].filter(Boolean).join(' or ');
+    return [
+        passwordKeys && `${passwordKeys} copies a password`,
+        username && `${username} the username`,
+    ].filter(Boolean).join(', ');
 }
