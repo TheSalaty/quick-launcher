@@ -10,7 +10,8 @@ license=('MIT')
 depends=('gnome-shell>=1:48')
 makedepends=('nodejs>=22' 'pnpm' 'glib2-devel' 'zip')
 optdepends=('rbw: Bitwarden vault'
-            '1password-cli: 1Password vault')
+            '1password-cli: 1Password vault'
+            'sqlite: T3 Code sessions')
 install=quick-launcher.install
 source=("quick-launcher-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz"
         'quick-launcher-remind-enable'

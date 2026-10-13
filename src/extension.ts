@@ -13,6 +13,7 @@ import {Recents} from './lib/recents.ts';
 import {Passwords} from './passwords/passwords.ts';
 import {Root} from './root.ts';
 import {System} from './system/system.ts';
+import {T3Code} from './t3code/t3code.ts';
 
 export default class QuickLauncherExtension extends Extension {
     #timers: Timers | null = null;
@@ -20,6 +21,7 @@ export default class QuickLauncherExtension extends Extension {
     #rates: ExchangeRates | null = null;
     #passwords: Passwords | null = null;
     #clockify: Clockify | null = null;
+    #t3code: T3Code | null = null;
     #shortcuts: string[] = [];
 
     override enable() {
@@ -31,6 +33,7 @@ export default class QuickLauncherExtension extends Extension {
         this.#rates = new ExchangeRates();
         this.#passwords = new Passwords(settings, this.#timers, this.dir.get_child('icons'), launcher, recents);
         this.#clockify = new Clockify(settings, launcher, recents);
+        this.#t3code = new T3Code(settings, launcher, recents);
         const root = new Root({
             settings,
             launcher,
@@ -40,6 +43,7 @@ export default class QuickLauncherExtension extends Extension {
             clockify: this.#clockify,
             emoji: new Emoji(this.dir.get_child('emoji').get_child('emoji.json'), launcher, recents),
             system: new System(launcher),
+            t3code: this.#t3code,
             openPreferences: () => this.openPreferences(),
         });
 
@@ -69,11 +73,13 @@ export default class QuickLauncherExtension extends Extension {
         this.#launcher?.destroy();
         this.#passwords?.destroy();
         this.#clockify?.destroy();
+        this.#t3code?.destroy();
         this.#rates?.destroy();
         this.#timers?.clear();
         this.#launcher = null;
         this.#passwords = null;
         this.#clockify = null;
+        this.#t3code = null;
         this.#rates = null;
         this.#timers = null;
     }

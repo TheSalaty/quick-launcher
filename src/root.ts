@@ -11,6 +11,7 @@ import type {Recents} from './lib/recents.ts';
 import {normalize, SearchIndex} from './lib/search.ts';
 import type {Passwords} from './passwords/passwords.ts';
 import type {System} from './system/system.ts';
+import type {T3Code} from './t3code/t3code.ts';
 
 const CALCULATOR_COLOR = '#ff7800';
 
@@ -23,6 +24,7 @@ export interface RootProviders {
     clockify: Clockify;
     emoji: Emoji;
     system: System;
+    t3code: T3Code;
     openPreferences(): void;
 }
 
@@ -39,20 +41,23 @@ export class Root {
         this.view = {
             title: 'Quick Launcher',
             icon: 'system-search-symbolic',
-            placeholder: 'Search passwords, timers, commands, or calculate…',
+            placeholder: 'Search passwords, sessions, timers, or calculate…',
             search: query => this.#search(query),
             onOpen: () => {
                 this.#p.passwords.reload();
                 this.#p.clockify.load();
+                this.#p.t3code.load();
                 this.#p.rates.refresh(() => this.#p.launcher.refresh());
             },
         };
     }
 
     #commands(): Item[] {
-        const {passwords, clockify, emoji, system} = this.#p;
+        const {passwords, clockify, emoji, system, t3code} = this.#p;
+        const t3 = t3code.command();
         return [
             ...passwords.vaultRows(),
+            ...t3 ? [t3] : [],
             ...clockify.commands(),
             ...passwords.commands(),
             emoji.command(),
@@ -75,10 +80,10 @@ export class Root {
     #search(query: string): Section[] {
         const text = query.trim();
         if (!text) {
-            const {recents, clockify, passwords, emoji} = this.#p;
+            const {recents, clockify, passwords, emoji, t3code} = this.#p;
             // The running timer is under Commands as "Stop Timer", not here where Enter would stop it.
             const recent = recents.ids
-                .map(id => passwords.recent(id) ?? clockify.recent(id) ?? emoji.recent(id))
+                .map(id => passwords.recent(id) ?? clockify.recent(id) ?? t3code.recent(id) ?? emoji.recent(id))
                 .filter((item): item is Item => item !== null)
                 .slice(0, 6);
             return [
@@ -102,6 +107,7 @@ export class Root {
         if (text.startsWith(':'))
             sections.push({title: 'Emoji', items: this.#p.emoji.search(text.slice(1), 8)});
         sections.push({title: 'Passwords', items: this.#p.passwords.search(text, 5)});
+        sections.push({title: 'T3 Code', items: this.#p.t3code.search(text, 5)});
         sections.push({title: 'Clockify', items: this.#p.clockify.search(text, 4)});
         if (!strong)
             sections.push({title: 'Commands', items: commands});
