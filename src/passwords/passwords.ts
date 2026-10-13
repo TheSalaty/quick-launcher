@@ -6,15 +6,25 @@ import type {Action, Item, Launcher, Section, View} from '../lib/launcher.ts';
 import {notifyError, osd, SecretClipboard, Typist, type Timers} from '../lib/output.ts';
 import type {Recents} from '../lib/recents.ts';
 import {SearchIndex, type Field} from '../lib/search.ts';
+import {setPinentryBridge} from './bridge.ts';
 import {OnePasswordVault} from './onepassword.ts';
 import {PinentryService, type PinRequest} from './pinentry.ts';
 import {RbwVault} from './rbw.ts';
 import {VaultLockedError, type ItemKind, type Prompter, type Vault, type VaultItem} from './vault.ts';
 
-type Status = 'checking' | 'locked' | 'unlocking' | 'unlocked' | 'error';
+export type VaultStatus = 'checking' | 'locked' | 'unlocking' | 'unlocked' | 'error';
+
+/** A vault as onboarding shows it */
+export interface VaultInfo {
+    vault: Vault;
+    logo: Gio.Icon;
+    status: VaultStatus;
+    error: string;
+    items: number;
+}
 
 interface VaultState {
-    status: Status;
+    status: VaultStatus;
     error: string;
     items: VaultItem[];
     /** Bumped on every reload, so a slow, stale response is dropped. */
@@ -68,14 +78,17 @@ export class Passwords {
     readonly #typist: Typist;
     readonly #prompter: Prompter;
     readonly #settingsIds: number[];
+    readonly #extensionDir: Gio.File;
     #index = new SearchIndex<VaultItem>([], searchFields);
     #pinentry: PinentryService | null = null;
     #destroyed = false;
 
     readonly view: View;
 
-    constructor(settings: Gio.Settings, timers: Timers, iconsDir: Gio.File, launcher: Launcher, recents: Recents) {
+    constructor(settings: Gio.Settings, timers: Timers, extensionDir: Gio.File, launcher: Launcher, recents: Recents) {
         this.#settings = settings;
+        this.#extensionDir = extensionDir;
+        const iconsDir = extensionDir.get_child('icons');
         this.#launcher = launcher;
         this.#recents = recents;
         this.#vaults = [new RbwVault(settings), new OnePasswordVault(settings)];
@@ -87,6 +100,7 @@ export class Passwords {
         this.#typist = new Typist(settings, timers);
         this.#prompter = {
             askSecret: (prompt, description) => this.#launcher.askSecret({prompt, description}),
+            askText: (prompt, description) => this.#launcher.ask({prompt, description, secret: false, action: 'Continue'}),
             stepAside: task => this.#stepAside(task),
         };
 
@@ -163,6 +177,40 @@ export class Passwords {
         const itemId = id.slice(RECENT_PREFIX.length);
         const item = this.#index.items.find(i => i.id === itemId);
         return item ? this.#item(item) : null;
+    }
+
+    /** Every vault, including turned off and not installed ones. */
+    vaults(): VaultInfo[] {
+        return this.#vaults.map(vault => {
+            const {status, error, items} = this.#state(vault);
+            return {vault, logo: this.#logos.get(vault)!, status, error, items: items.length};
+        });
+    }
+
+    /** Turns a vault on, sets it up if needed, and unlocks it. */
+    async connect(vault: Vault) {
+        try {
+            this.#settings.set_boolean(vault.enabledKey, true);
+            if (vault.setUp && !await vault.setUp(this.#prompter))
+                return;
+            // Ask for rbw's master password right here instead of in a separate pinentry window.
+            if (vault instanceof RbwVault && !this.#settings.get_boolean('rbw-pinentry-bridge')) {
+                await setPinentryBridge(this.#settings, true, this.#extensionDir).catch(e =>
+                    console.warn('quick-launcher: Could not set up the rbw pinentry bridge', e));
+            }
+            if (await vault.isUnlocked()) {
+                await this.#reload(vault);
+                return;
+            }
+        } catch (e) {
+            this.#setState(vault, {status: 'error', error: (e as Error).message});
+            return;
+        }
+        await this.#unlock(vault);
+    }
+
+    setEnabled(vault: Vault, enabled: boolean) {
+        this.#settings.set_boolean(vault.enabledKey, enabled);
     }
 
     #viewSections(query: string): Section[] {

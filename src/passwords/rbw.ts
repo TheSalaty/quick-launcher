@@ -1,6 +1,6 @@
 import type Gio from 'gi://Gio';
 
-import {CommandError, run, type RunOptions} from '../lib/subprocess.ts';
+import {CommandError, findProgram, run, type RunOptions} from '../lib/subprocess.ts';
 import {VaultLockedError, type ItemKind, type Prompter, type SecretField, type Vault, type VaultItem} from './vault.ts';
 
 const KINDS: Record<string, ItemKind> = {
@@ -26,6 +26,9 @@ export class RbwVault implements Vault {
     readonly name = 'Bitwarden';
     readonly logo = 'bitwarden.svg';
     readonly logoClass = 'ql-source-bitwarden';
+    readonly color = '#175ddc';
+    readonly website = 'https://github.com/doy/rbw#installation';
+    readonly enabledKey = 'bitwarden-enabled';
     readonly #settings: Gio.Settings;
 
     constructor(settings: Gio.Settings) {
@@ -33,7 +36,26 @@ export class RbwVault implements Vault {
     }
 
     get enabled(): boolean {
-        return this.#settings.get_boolean('bitwarden-enabled');
+        return this.#settings.get_boolean(this.enabledKey);
+    }
+
+    get installed(): boolean {
+        return findProgram(this.#settings.get_string('rbw-path') || 'rbw') !== null;
+    }
+
+    /** rbw needs the account's email before it can log in. */
+    async setUp(prompter: Prompter): Promise<boolean> {
+        const {stdout} = await this.#run(['config', 'show'], {check: false});
+        try {
+            if (JSON.parse(stdout).email)
+                return true;
+        } catch {}
+        const email = (await prompter.askText('Bitwarden email',
+            'Your Bitwarden account. For a self-hosted server, run rbw config set base_url first'))?.trim();
+        if (!email)
+            return false;
+        await this.#run(['config', 'set', 'email', email]);
+        return true;
     }
 
     #run(args: string[], options?: RunOptions) {

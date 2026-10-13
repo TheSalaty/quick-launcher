@@ -9,6 +9,7 @@ import type {Item, Launcher, Section, View} from './lib/launcher.ts';
 import {osd} from './lib/output.ts';
 import type {Recents} from './lib/recents.ts';
 import {normalize, SearchIndex} from './lib/search.ts';
+import {Onboarding} from './onboarding.ts';
 import type {Passwords} from './passwords/passwords.ts';
 import type {System} from './system/system.ts';
 import type {T3Code} from './t3code/t3code.ts';
@@ -35,6 +36,7 @@ export interface RootProviders {
 export class Root {
     readonly #p: RootProviders;
     readonly view: View;
+    readonly onboarding: Onboarding;
 
     constructor(providers: RootProviders) {
         this.#p = providers;
@@ -50,6 +52,14 @@ export class Root {
                 this.#p.rates.refresh(() => this.#p.launcher.refresh());
             },
         };
+        this.onboarding = new Onboarding({...providers, root: this.view});
+    }
+
+    /** Opens the start view, with Getting Started on top the first time. */
+    open() {
+        this.#p.launcher.open(this.view);
+        if (this.onboarding.pending)
+            this.#p.launcher.push(this.onboarding.view);
     }
 
     #commands(): Item[] {
@@ -62,6 +72,7 @@ export class Root {
             ...passwords.commands(),
             emoji.command(),
             ...system.commands(),
+            this.onboarding.command(),
             {
                 id: 'command:settings',
                 icon: {name: 'preferences-system-symbolic', color: '#6f6f78'},

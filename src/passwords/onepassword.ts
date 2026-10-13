@@ -1,7 +1,7 @@
 import type Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 
-import {CommandError, run, type RunOptions} from '../lib/subprocess.ts';
+import {CommandError, findProgram, run, type RunOptions} from '../lib/subprocess.ts';
 import {VaultLockedError, type ItemKind, type Prompter, type SecretField, type Vault, type VaultItem} from './vault.ts';
 
 const KINDS: Record<string, ItemKind> = {
@@ -52,6 +52,9 @@ export class OnePasswordVault implements Vault {
     readonly name = '1Password';
     readonly logo = '1password.svg';
     readonly logoClass = 'ql-source-1password';
+    readonly color = '#0b6bcb';
+    readonly website = 'https://developer.1password.com/docs/cli/get-started/';
+    readonly enabledKey = 'onepassword-enabled';
     readonly #settings: Gio.Settings;
     /** Session token from `op signin --raw`; only lives in memory. */
     #session: string | null = null;
@@ -62,7 +65,11 @@ export class OnePasswordVault implements Vault {
     }
 
     get enabled(): boolean {
-        return this.#settings.get_boolean('onepassword-enabled');
+        return this.#settings.get_boolean(this.enabledKey);
+    }
+
+    get installed(): boolean {
+        return findProgram(this.#settings.get_string('op-path') || 'op') !== null;
     }
 
     get #usesApp(): boolean {

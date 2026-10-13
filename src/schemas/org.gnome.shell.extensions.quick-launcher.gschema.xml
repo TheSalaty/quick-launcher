@@ -63,6 +63,10 @@
       <summary>Press Enter after typing a password</summary>
     </key>
 
+    <key name="onboarding-done" type="b">
+      <default>false</default>
+      <summary>Getting Started was shown; until then the launcher opens with it</summary>
+    </key>
     <key name="recent" type="as">
       <default>[]</default>
       <summary>Recently used items, newest first</summary>

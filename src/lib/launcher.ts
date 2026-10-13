@@ -28,10 +28,10 @@ export interface Action {
     run(): void;
 }
 
-/** A symbolic icon (on a colored tile if `color` is set), a file icon, or a character such as an emoji. */
+/** A symbolic icon or a file icon (on a colored tile if `color` is set), or a character such as an emoji. */
 export type Icon =
     | {name: string; color?: string; style?: string}
-    | {gicon: Gio.Icon}
+    | {gicon: Gio.Icon; color?: string}
     | {text: string};
 
 export interface Item {
@@ -341,6 +341,11 @@ export class Launcher {
             this.#update(this.#userSelected ? this.selected?.id : undefined);
     }
 
+    /** Opens the action panel of the selected item, like Ctrl+K. */
+    showActions() {
+        this.#openPanel();
+    }
+
     /** Shows a message in the footer instead of the view title. */
     setStatus(text: string | null) {
         this.#status = text;
@@ -349,6 +354,18 @@ export class Launcher {
 
     /** Turns the search field into a password field until Enter (the text) or Esc (null). */
     askSecret({prompt, description}: {prompt: string; description?: string}): Promise<string | null> {
+        return this.ask({prompt, description});
+    }
+
+    /** Turns the search field into a prompt until Enter (the text) or Esc (null). */
+    ask({prompt, description, secret = true, action = 'Unlock'}: {
+        prompt: string;
+        description?: string;
+        /** Hide what is typed */
+        secret?: boolean;
+        /** What Enter does, shown in the footer */
+        action?: string;
+    }): Promise<string | null> {
         this.#resolvePrompt(null);
         this.#closePanel();
         const standalone = !this.isOpen;
@@ -360,17 +377,18 @@ export class Launcher {
             this.#prompt = {resolve, standalone};
         });
         this.#box.add_style_pseudo_class('secret');
-        this.#entryIcon.icon_name = 'system-lock-screen-symbolic';
+        this.#entryIcon.icon_name = secret ? 'system-lock-screen-symbolic' : 'document-edit-symbolic';
         this.#entry.hint_text = prompt;
-        this.#entry.clutter_text.password_char = 0x2022; // •
+        this.#entry.clutter_text.password_char = secret ? 0x2022 : 0; // •
         this.#setText('');
+        this.#selectAll();
         this.#scroll.hide();
         this.#empty.hide();
         this.#back.hide();
         this.#entry.grab_key_focus();
-        this.#footerIcon.icon_name = 'system-lock-screen-symbolic';
-        this.#footerText.text = description ?? 'Enter to unlock, Esc to cancel';
-        this.#primaryLabel.text = 'Unlock';
+        this.#footerIcon.icon_name = this.#entryIcon.icon_name;
+        this.#footerText.text = description ?? `Enter to ${action.toLowerCase()}, Esc to cancel`;
+        this.#primaryLabel.text = action;
         this.#primaryLabel.show();
         setKeys(this.#primaryKeys, ['↵']);
         this.#actionsHint.hide();
@@ -412,7 +430,16 @@ export class Launcher {
         frame.view.onOpen?.();
         this.#update(frame.selectId);
         this.#entry.grab_key_focus();
-        this.#entry.clutter_text.set_selection(0, this.#entry.get_text().length);
+        this.#selectAll();
+    }
+
+    /** Selects the query, so typing replaces it. An empty one gets a plain cursor, or the first key would be selected. */
+    #selectAll() {
+        const length = this.#entry.get_text().length;
+        if (length)
+            this.#entry.clutter_text.set_selection(0, length);
+        else
+            this.#entry.clutter_text.set_selection(-1, -1);
     }
 
     #update(selectId?: string) {
@@ -496,7 +523,7 @@ export class Launcher {
 
     #fillRow(row: Row, item: Item) {
         const {icon} = item;
-        const tile = 'name' in icon && icon.color ? icon.color : null;
+        const tile = !('text' in icon) && icon.color ? icon.color : null;
         row.glyph.visible = 'text' in icon;
         row.icon.visible = !('text' in icon);
         row.iconBox.style = tile ? `background-color: ${tile};` : null;

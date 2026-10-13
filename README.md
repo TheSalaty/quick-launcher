@@ -26,6 +26,7 @@ like math, a unit conversion, a date or a time zone is answered right away.
 - System commands: lock, suspend, log out, restart, power off, screenshot, dark mode, Do Not
   Disturb, Night Light
 - Follows the shell theme (light, dark, accent color) and blurs the desktop behind it
+- *Getting Started* on the first open connects your accounts and shows what it can do
 
 Quick Launcher supports GNOME Shell 48, 49 and 50.
 
@@ -64,6 +65,28 @@ make install
 ```
 
 Log out and back in before enabling the extension. Run `make pack` to build an installable zip.
+
+## Getting started
+
+After you enable the extension, a notification points you to the shortcut. The first time you
+open the launcher, it starts with *Getting Started*:
+
+- **Connect Bitwarden** asks for your account email, if rbw doesn't know it yet, and then your
+  master password, all in the launcher.
+- **Connect 1Password** unlocks it through the 1Password app or your master password.
+- **Connect Clockify** takes an API key and checks it before saving it. <kbd>Ctrl</kbd><kbd>O</kbd>
+  opens the page where you create one.
+- T3 Code shows up as found if it is installed.
+- **Try it** has examples for the calculator, dates, time zones, emoji and system commands. Press
+  <kbd>Enter</kbd> on one to see it run.
+
+<p align="center">
+  <img src="docs/onboarding.png" alt="Getting Started: connect Bitwarden, 1Password and Clockify, then try examples" width="600">
+</p>
+
+If a CLI isn't installed, its row links to the install guide instead. <kbd>Ctrl</kbd><kbd>D</kbd>
+turns off a password manager you don't use. You can also just start typing, which searches as
+usual. *Getting Started* stays available as a command.
 
 ## Using it
 

@@ -19,6 +19,8 @@ export interface VaultItem {
 export interface Prompter {
     /** Asks inside the launcher; resolves null if cancelled. */
     askSecret(prompt: string, description?: string): Promise<string | null>;
+    /** Like askSecret, but the answer is visible, e.g. an email address. */
+    askText(prompt: string, description?: string): Promise<string | null>;
     /** Hides the launcher while an external prompt (pinentry, 1Password app) is shown. */
     stepAside<R>(task: () => Promise<R>): Promise<R>;
 }
@@ -29,7 +31,18 @@ export interface Vault {
     /** Logo file in icons/ and the style class of its tile */
     readonly logo: string;
     readonly logoClass: string;
+    /** Brand color, for the logo tile in onboarding */
+    readonly color: string;
+    /** Where to get the CLI it needs */
+    readonly website: string;
+    /** Settings key that turns it on */
+    readonly enabledKey: string;
     readonly enabled: boolean;
+    /** The CLI it needs is installed. */
+    readonly installed: boolean;
+
+    /** One-time setup before the first unlock, e.g. the account email. Resolves false if cancelled. */
+    setUp?(prompter: Prompter): Promise<boolean>;
 
     isUnlocked(): Promise<boolean>;
     /** Resolves false if the user cancelled. */
