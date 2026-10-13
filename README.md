@@ -25,7 +25,8 @@ like math, a unit conversion, a date or a time zone is answered right away.
 - Emoji search in English and German
 - System commands: lock, suspend, log out, restart, power off, screenshot, dark mode, Do Not
   Disturb, Night Light
-- Follows the shell theme (light, dark, accent color) and blurs the desktop behind it
+- Follows the shell theme (light, dark, accent color), with a blurred, translucent background
+- Shows the running Clockify timer and how long it runs in the top bar
 - *Getting Started* on the first open connects your accounts and shows what it can do
 
 Quick Launcher supports GNOME Shell 48, 49 and 50.
@@ -98,8 +99,8 @@ top, then passwords, Clockify entries and commands. Only items matching every wo
 shown. Below them, *Use “…” with* starts a timer with the text or searches passwords or emoji
 for it.
 
-The launcher uses the shell theme, so it follows light and dark style and your accent color, and
-the desktop behind it is blurred.
+The launcher uses the shell theme, so it follows light and dark style and your accent color. Its
+background is translucent and blurs what is behind it; the rest of the desktop stays as it is.
 
 <p align="center">
   <img src="docs/search.png" alt="A search finding a GitHub login, with commands to use the text elsewhere" width="600">
@@ -207,7 +208,10 @@ API is called.
 
 Matching recent entries show up in the search, with when you last worked on them.
 <kbd>Enter</kbd> starts an entry again, or stops it if it is running; *Stop Timer* is also a
-command while a timer runs. Starting a timer stops the running one at the same second, so there are no gaps.
+command while a timer runs, with how long it runs. Starting a timer stops the running one at the same second, so there are no gaps.
+
+While a timer runs, the top bar shows it and how long it runs, also for timers started in Clockify
+itself; its menu stops the timer. Until Clockify is connected, *Connect Clockify* is a command.
 
 <p align="center">
   <img src="docs/clockify.png" alt="A recent Clockify entry found by typing standup" width="600">

@@ -1,4 +1,5 @@
 import Gio from 'gi://Gio';
+import St from 'gi://St';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
@@ -11,6 +12,12 @@ import {OnePasswordVault} from './onepassword.ts';
 import {PinentryService, type PinRequest} from './pinentry.ts';
 import {RbwVault} from './rbw.ts';
 import {VaultLockedError, type ItemKind, type Prompter, type Vault, type VaultItem} from './vault.ts';
+
+/** How to install a vault's CLI on Arch-based systems */
+const INSTALL_COMMANDS: Record<string, string> = {
+    bitwarden: 'sudo pacman -S rbw',
+    '1password': 'pamac build 1password-cli',
+};
 
 export type VaultStatus = 'checking' | 'locked' | 'unlocking' | 'unlocked' | 'error';
 
@@ -272,7 +279,8 @@ export class Passwords {
     #vaultRow(vault: Vault): Item {
         const {status, error} = this.#state(vault);
         const actions: Action[] = [
-            {title: status === 'error' ? 'Retry' : 'Unlock', icon: 'system-lock-screen-symbolic', run: () => void this.#unlock(vault)},
+            // connect() also asks for what is missing first, such as rbw's account email.
+            {title: status === 'error' ? 'Retry' : 'Unlock', icon: 'system-lock-screen-symbolic', run: () => void this.connect(vault)},
             ...vault.askServer ? [{
                 title: 'Use Another Server…', icon: 'network-server-symbolic', shortcut: 'vault-server',
                 run: () => void this.changeServer(vault),
@@ -287,10 +295,59 @@ export class Passwords {
         case 'unlocking':
             return {...base, icon: {name: 'content-loading-symbolic'}, title: `Unlocking ${vault.name}…`, dim: true};
         case 'error':
-            return {...base, icon: {name: 'dialog-warning-symbolic'}, title: `${vault.name} is unavailable`, subtitle: error, dim: true};
+            return {...base, icon: {name: 'dialog-warning-symbolic'}, ...this.#remedy(vault, error, actions[0])};
         default:
             return {...base, icon: {name: 'system-lock-screen-symbolic'}, title: `Unlock ${vault.name}`, subtitle: 'Locked'};
         }
+    }
+
+    /** Says what is wrong with a vault and how to fix it, with the fix as the first action. */
+    #remedy(vault: Vault, error: string, retry: Action): Pick<Item, 'title' | 'subtitle' | 'actions'> {
+        const turnOff: Action = {
+            title: `Don’t Use ${vault.name}`, icon: 'process-stop-symbolic', shortcut: 'vault-off',
+            run: () => this.setEnabled(vault, false),
+        };
+        const open = (title: string, uri: string): Action => ({title, icon: 'web-browser-symbolic', run: () => {
+            this.#launcher.close();
+            Gio.AppInfo.launch_default_for_uri(uri, null);
+        }});
+        if (!vault.installed) {
+            const install = INSTALL_COMMANDS[vault.id];
+            return {
+                title: `${vault.name} needs ${vault.id === 'bitwarden' ? 'rbw' : 'the 1Password CLI'}`,
+                subtitle: `Install it${install ? ` in a terminal: ${install}` : ''}, then press Enter to retry`,
+                actions: [
+                    {...retry, title: 'Retry'},
+                    ...install ? [{title: 'Copy Install Command', icon: 'edit-copy-symbolic', run: () => {
+                        this.#launcher.close();
+                        St.Clipboard.get_default().set_text(St.ClipboardType.CLIPBOARD, install);
+                        osd('edit-copy-symbolic', 'Install command copied');
+                    }} satisfies Action] : [],
+                    open('Open Install Guide', vault.website),
+                    turnOff,
+                ],
+            };
+        }
+        if (vault.id === '1password' && error.startsWith('No account set up')) {
+            return {
+                title: 'Turn on the 1Password CLI integration',
+                subtitle: '1Password → Settings → Developer → “Integrate with 1Password CLI”, then press Enter',
+                actions: [
+                    {...retry, title: 'Retry'},
+                    {title: 'Open 1Password', icon: 'dialog-password-symbolic', run: () => {
+                        this.#launcher.close();
+                        try {
+                            Gio.Subprocess.new(['1password'], Gio.SubprocessFlags.NONE);
+                        } catch (e) {
+                            notifyError('Could not open 1Password', e);
+                        }
+                    }},
+                    open('Open Guide', 'https://developer.1password.com/docs/cli/app-integration/'),
+                    turnOff,
+                ],
+            };
+        }
+        return {title: `${vault.name} is unavailable`, subtitle: `${error} · Enter retries`, actions: [retry, turnOff]};
     }
 
     // --- Vault state ---

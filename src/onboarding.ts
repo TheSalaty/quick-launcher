@@ -71,7 +71,7 @@ export class Onboarding {
                 id: 'onboarding:done',
                 icon: {name: 'go-next-symbolic', color: ACCENT},
                 title: 'Start Using Quick Launcher',
-                subtitle: `Open it any time with ${shortcutText(this.#p.settings.get_strv('shortcut')[0])}`,
+                subtitle: `Open it any time with ${shortcutText(this.#p.settings.get_strv('open-shortcut')[0])}`,
                 actions: [{title: 'Start', icon: 'go-next-symbolic', run: () => this.#p.launcher.open(this.#p.root)}],
             }]},
         ];
@@ -129,6 +129,19 @@ export class Onboarding {
                 : 'Through the 1Password app or your master password',
             accessory: status === 'error' ? 'Failed' : undefined,
             actions: [connect, ...changeServer, turnOff],
+        };
+    }
+
+    /** "Connect Clockify" for the start view's commands, until it is connected. */
+    clockifyCommand(): Item | null {
+        const {clockify} = this.#p;
+        if (clockify.configured && !clockify.error)
+            return null;
+        return {
+            ...this.#clockifyRow(),
+            id: 'command:clockify-connect',
+            accessory: clockify.error ? 'Failed' : 'Set Up',
+            keywords: 'clockify timer time tracking zeiterfassung api key anmelden verbinden',
         };
     }
 

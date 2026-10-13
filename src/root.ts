@@ -65,10 +65,12 @@ export class Root {
     #commands(): Item[] {
         const {passwords, clockify, emoji, system, t3code} = this.#p;
         const t3 = t3code.command();
+        const connectClockify = this.onboarding.clockifyCommand();
         return [
             ...passwords.vaultRows(),
             ...t3 ? [t3] : [],
             ...clockify.commands(),
+            ...connectClockify ? [connectClockify] : [],
             ...passwords.commands(),
             emoji.command(),
             ...system.commands(),

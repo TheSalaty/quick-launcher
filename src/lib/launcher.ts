@@ -11,6 +11,7 @@ import {
     accelerators, keyName, matches, parseAccelerator, shortcutLabel, shortcutText,
     type Overrides, type Shortcut, type ShortcutId,
 } from './shortcuts.ts';
+import {createBlur} from './blur.ts';
 
 const MAX_ROWS = 60;
 /** Opacity of secondary text */
@@ -100,6 +101,7 @@ interface Prompt {
  */
 export class Launcher {
     readonly #backdrop: St.Widget;
+    readonly #blur: St.Widget;
     readonly #box: St.BoxLayout;
     readonly #entry: St.Entry;
     readonly #entryIcon: St.Icon;
@@ -144,8 +146,6 @@ export class Launcher {
             visible: false,
             constraints: new Clutter.BindConstraint({source: global.stage, coordinate: Clutter.BindCoordinate.ALL}),
         });
-        // Blur and slightly dim everything behind the popup.
-        this.#backdrop.add_effect(new Shell.BlurEffect({mode: Shell.BlurMode.BACKGROUND, radius: 30, brightness: 0.8}));
         this.#backdrop.connect('button-press-event', (_actor, event: Clutter.Event) => {
             const [x, y] = event.get_coords();
             const [bx, by] = this.#box.get_transformed_position();
@@ -156,6 +156,9 @@ export class Launcher {
         });
 
         this.#box = new St.BoxLayout({style_class: 'popup-menu-content ql-box', orientation: Clutter.Orientation.VERTICAL});
+        // Blur only what is behind the popup; the box gets a translucent background in open().
+        this.#blur = createBlur(this.#box);
+        this.#backdrop.add_child(this.#blur);
         this.#backdrop.add_child(this.#box);
 
         // Search bar
@@ -295,9 +298,16 @@ export class Launcher {
         Main.layoutManager.uiGroup.set_child_above_sibling(this.#backdrop, null);
         this.#grab = Main.pushModal(this.#backdrop, {actionMode: Shell.ActionMode.SYSTEM_MODAL});
 
+        // Make the theme's popup background translucent so the blur shows through.
+        this.#box.style = null;
+        const bg = this.#box.get_theme_node().get_background_color();
+        this.#box.style = `background-color: rgba(${bg.red}, ${bg.green}, ${bg.blue}, 0.75);`;
+
         this.#showFrame();
-        this.#box.opacity = 0;
-        this.#box.ease({opacity: 255, duration: 90, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
+        for (const actor of [this.#box, this.#blur]) {
+            actor.opacity = 0;
+            actor.ease({opacity: 255, duration: 90, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
+        }
     }
 
     close() {
@@ -309,6 +319,7 @@ export class Launcher {
         this.#resolvePrompt(null);
         Main.popModal(grab);
         this.#box.remove_all_transitions();
+        this.#blur.remove_all_transitions();
         this.#backdrop.hide();
         this.#status = null;
     }

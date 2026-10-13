@@ -76,6 +76,7 @@ export class Clockify {
     #loading = false;
     #destroyed = false;
     #error: string | null = null;
+    readonly #listeners = new Set<() => void>();
 
     readonly view: View;
 
@@ -122,12 +123,24 @@ export class Clockify {
         return name;
     }
 
+    /** The timer running right now, as of the last refresh */
+    get running(): Task | undefined {
+        return this.#index.items.find(t => t.running);
+    }
+
+    /** Calls `listener` whenever the entries or the running timer change; returns an unsubscribe function. */
+    onChange(listener: () => void): () => void {
+        this.#listeners.add(listener);
+        return () => this.#listeners.delete(listener);
+    }
+
     disconnect() {
         this.#settings.reset('clockify-api-key');
         this.#index = new SearchIndex<Task>([], searchFields);
         this.#account = null;
         this.#error = null;
         this.#launcher.refresh();
+        this.#listeners.forEach(l => l());
     }
 
     // --- What the launcher shows ---
@@ -142,7 +155,7 @@ export class Clockify {
     commands(): Item[] {
         if (!this.configured)
             return [];
-        const running = this.#index.items.find(t => t.running);
+        const running = this.running;
         return [
             {
                 id: 'command:clockify',
@@ -157,8 +170,9 @@ export class Clockify {
                 icon: {name: 'media-playback-stop-symbolic', color: CLOCKIFY_COLOR},
                 title: 'Stop Timer',
                 subtitle: running.description || running.projectName || 'Clockify',
-                accessory: 'Command',
-                actions: [{title: 'Stop Timer', icon: 'media-playback-stop-symbolic', run: () => void this.#stop()}],
+                accessory: `● ${duration(running.lastStart)}`,
+                accessoryActive: true,
+                actions: [{title: 'Stop Timer', icon: 'media-playback-stop-symbolic', run: () => void this.stop()}],
             }] : [],
         ];
     }
@@ -195,7 +209,7 @@ export class Clockify {
 
     #viewActions(): Action[] {
         return [
-            {title: 'Stop Running Timer', icon: 'media-playback-stop-symbolic', shortcut: 'stop-timer', run: () => void this.#stop()},
+            {title: 'Stop Running Timer', icon: 'media-playback-stop-symbolic', shortcut: 'stop-timer', run: () => void this.stop()},
             {title: 'Reload', icon: 'view-refresh-symbolic', shortcut: 'reload-clockify', run: () => void this.load(true)},
         ];
     }
@@ -229,7 +243,7 @@ export class Clockify {
             subtitle: [project, task.clientName, tags].filter(Boolean).join('  ·  '),
             accessory: task.running ? `● ${duration(task.lastStart)}` : timeAgo(task.lastStart),
             actions: task.running
-                ? [{title: 'Stop Timer', icon: 'media-playback-stop-symbolic', run: () => void this.#stop()}, startNew]
+                ? [{title: 'Stop Timer', icon: 'media-playback-stop-symbolic', run: () => void this.stop()}, startNew]
                 : [{title: 'Start Timer', icon: 'media-playback-start-symbolic', run: () => void this.#start(task)}, startNew],
         };
     }
@@ -276,6 +290,7 @@ export class Clockify {
         this.#tags = tags;
         this.#index = new SearchIndex(tasks, searchFields);
         this.#launcher.refresh();
+        this.#listeners.forEach(l => l());
     }
 
     async #reload() {
@@ -332,7 +347,7 @@ export class Clockify {
         }
     }
 
-    async #stop() {
+    async stop() {
         this.#launcher.close();
         try {
             if (await this.#api.stop())

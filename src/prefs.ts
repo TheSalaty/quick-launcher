@@ -115,7 +115,7 @@ function generalPage(settings: Gio.Settings): Adw.PreferencesPage {
     const launcher = new Adw.PreferencesGroup({
         description: 'One launcher for passwords, Clockify, the calculator, emoji and system commands. Start typing to search everything at once.',
     });
-    launcher.add(shortcutRow(settings, 'shortcut', 'Open launcher'));
+    launcher.add(shortcutRow(settings, 'open-shortcut', 'Open launcher'));
     page.add(launcher);
 
     const calculator = new Adw.PreferencesGroup({
@@ -186,7 +186,7 @@ function shortcutsPage(settings: Gio.Settings): Adw.PreferencesPage {
         title: 'Anywhere',
         description: 'These work everywhere in GNOME. Click a shortcut to change it.',
     });
-    global.add(shortcutRow(settings, 'shortcut', 'Open launcher'));
+    global.add(shortcutRow(settings, 'open-shortcut', 'Open launcher'));
     global.add(shortcutRow(settings, 'clockify-shortcut', 'Open Clockify directly'));
     page.add(global);
 

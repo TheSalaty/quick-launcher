@@ -7,6 +7,7 @@ import * as MessageTray from 'resource:///org/gnome/shell/ui/messageTray.js';
 
 import {ExchangeRates} from './calc/rates.ts';
 import {Clockify} from './clockify/clockify.ts';
+import {ClockifyIndicator} from './clockify/indicator.ts';
 import {Emoji} from './emoji/emoji.ts';
 import {shortcutText} from './lib/shortcuts.ts';
 import {Launcher} from './lib/launcher.ts';
@@ -24,6 +25,7 @@ export default class QuickLauncherExtension extends Extension {
     #passwords: Passwords | null = null;
     #clockify: Clockify | null = null;
     #t3code: T3Code | null = null;
+    #indicator: ClockifyIndicator | null = null;
     #shortcuts: string[] = [];
     #notification: MessageTray.Notification | null = null;
 
@@ -50,7 +52,7 @@ export default class QuickLauncherExtension extends Extension {
             openPreferences: () => this.openPreferences(),
         });
 
-        this.#bind('shortcut', settings, () => {
+        this.#bind('open-shortcut', settings, () => {
             if (launcher.isOpen)
                 launcher.close();
             else
@@ -64,8 +66,13 @@ export default class QuickLauncherExtension extends Extension {
                 launcher.open(this.#clockify!.view);
         });
 
+        this.#indicator = new ClockifyIndicator(this.#clockify, () => {
+            this.#clockify?.load();
+            launcher.open(this.#clockify!.view);
+        });
+
         if (root.onboarding.pending)
-            this.#welcome(shortcutText(settings.get_strv('shortcut')[0]), () => root.open());
+            this.#welcome(shortcutText(settings.get_strv('open-shortcut')[0]), () => root.open());
     }
 
     /** Points a new user at the shortcut, once per login until they opened the launcher. */
@@ -97,6 +104,8 @@ export default class QuickLauncherExtension extends Extension {
             Main.wm.removeKeybinding(key);
         this.#shortcuts = [];
         this.#notification?.destroy();
+        this.#indicator?.destroy();
+        this.#indicator = null;
         this.#launcher?.destroy();
         this.#passwords?.destroy();
         this.#clockify?.destroy();
