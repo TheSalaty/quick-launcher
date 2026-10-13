@@ -76,7 +76,7 @@ export default class QuickLauncherPreferences extends ExtensionPreferences {
         });
         browser.add(switchRow(settings, 'browser-login', 'Open website and log in on Enter'));
         for (const [key, title] of [
-            ['bitwarden-autofill-keys', 'Bitwarden extension “Autofill login” shortcut'],
+            ['bitwarden-autofill-keys', 'Bitwarden extension “Autofill login” shortcut (empty = only open)'],
             ['onepassword-autofill-keys', '1Password extension autofill shortcut'],
         ]) {
             const row = new Adw.EntryRow({title, show_apply_button: true});

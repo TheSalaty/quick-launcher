@@ -140,13 +140,13 @@ Commands like *Search Passwords*, *Start Timer* and *Search Emoji & Symbols* ope
 | <kbd>Ctrl</kbd><kbd>R</kbd> / <kbd>Ctrl</kbd><kbd>L</kbd> | sync / lock vaults (in *Search Passwords*) |
 
 **Logging in on a website:** for a login with a website, <kbd>Enter</kbd> opens it in your default
-browser (a new tab if it is running), waits 2.5 seconds for it to load, and presses the autofill
-shortcut of the vault's browser extension: <kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>L</kbd> for
-Bitwarden, <kbd>Ctrl</kbd><kbd>\\</kbd> for 1Password. The extension fills only logins that match
-the page, and the keys are only pressed if the browser has focus. In Chrome, check
-`chrome://extensions/shortcuts` that Bitwarden's *Autofill login* has that shortcut (another
-extension may have taken it), or set yours in the settings. Turn it off there to copy the password
-on <kbd>Enter</kbd> again.
+browser (a new tab if it is running). For 1Password items it then waits 2.5 seconds for the page
+to load and presses <kbd>Ctrl</kbd><kbd>\\</kbd>, the 1Password browser extension's autofill
+shortcut, which fills only logins that match the page; the keys are only pressed if the browser
+has focus. The 1Password extension unlocks together with the app. The Bitwarden extension has its
+own lock, so for Bitwarden items the website just opens; to fill those too, set the extension's
+*Autofill login* shortcut (in Chrome under `chrome://extensions/shortcuts`) in the settings as
+well. Turn the feature off there to copy the password on <kbd>Enter</kbd> again.
 
 A locked vault shows up as **Unlock Bitwarden** or **Unlock 1Password**. Press
 <kbd>Enter</kbd> on it.

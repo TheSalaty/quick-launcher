@@ -63,8 +63,8 @@
       <summary>Enter on an item with a website opens it and fills the login through the browser extension</summary>
     </key>
     <key name="bitwarden-autofill-keys" type="s">
-      <default>'&lt;Control&gt;&lt;Shift&gt;l'</default>
-      <summary>The Bitwarden browser extension's "Autofill login" shortcut; empty = only open the website</summary>
+      <default>''</default>
+      <summary>The Bitwarden browser extension's "Autofill login" shortcut, e.g. &lt;Control&gt;&lt;Shift&gt;l; empty = only open the website</summary>
     </key>
     <key name="onepassword-autofill-keys" type="s">
       <default>'&lt;Control&gt;backslash'</default>
