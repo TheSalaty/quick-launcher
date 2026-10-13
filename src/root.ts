@@ -151,11 +151,11 @@ export class Root {
             actions: [
                 {title: 'Copy Answer', icon: 'edit-copy-symbolic', run: copy(result.copy, `${result.display} copied`)},
                 {
-                    title: 'Copy as Shown', icon: 'edit-copy-symbolic', shortcut: {key: 'c', ctrl: true, shift: true},
+                    title: 'Copy as Shown', icon: 'edit-copy-symbolic', shortcut: 'copy-shown',
                     run: copy(result.display, `${result.display} copied`),
                 },
                 {
-                    title: 'Copy Question and Answer', icon: 'edit-copy-symbolic', shortcut: {key: 'c', ctrl: true, alt: true},
+                    title: 'Copy Question and Answer', icon: 'edit-copy-symbolic', shortcut: 'copy-question',
                     run: copy(`${text} = ${result.display}`, 'Copied'),
                 },
             ],

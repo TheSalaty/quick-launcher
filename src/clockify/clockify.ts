@@ -195,8 +195,8 @@ export class Clockify {
 
     #viewActions(): Action[] {
         return [
-            {title: 'Stop Running Timer', icon: 'media-playback-stop-symbolic', shortcut: {key: 's', ctrl: true}, run: () => void this.#stop()},
-            {title: 'Reload', icon: 'view-refresh-symbolic', shortcut: {key: 'r', ctrl: true}, run: () => void this.load(true)},
+            {title: 'Stop Running Timer', icon: 'media-playback-stop-symbolic', shortcut: 'stop-timer', run: () => void this.#stop()},
+            {title: 'Reload', icon: 'view-refresh-symbolic', shortcut: 'reload-clockify', run: () => void this.load(true)},
         ];
     }
 
@@ -206,7 +206,7 @@ export class Clockify {
         const startNew: Action = {
             title: 'Start as New Entry',
             icon: 'list-add-symbolic',
-            shortcut: {key: 'return', shift: true},
+            shortcut: 'start-new',
             run: () => void this.#start(this.#draft(this.#launcher.query)),
         };
 

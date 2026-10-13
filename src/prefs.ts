@@ -1,11 +1,15 @@
 import Adw from 'gi://Adw';
 import Gdk from 'gi://Gdk';
 import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
 import Gtk from 'gi://Gtk';
 
 import {ExtensionPreferences} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 
 import {CURRENCIES} from './calc/units.ts';
+import {
+    GROUPS, SHORTCUTS, accelerators, conflicts, type Overrides, type ShortcutGroup, type ShortcutId,
+} from './lib/shortcuts.ts';
 import {findProgram} from './lib/subprocess.ts';
 import {setPinentryBridge} from './passwords/bridge.ts';
 import {rbwConfig, setRbwConfig, type RbwConfig} from './passwords/rbw.ts';
@@ -17,6 +21,7 @@ export default class QuickLauncherPreferences extends ExtensionPreferences {
         window.add(generalPage(settings));
         window.add(this.#passwordsPage(settings));
         window.add(clockifyPage(settings));
+        window.add(shortcutsPage(settings));
     }
 
     #passwordsPage(settings: Gio.Settings): Adw.PreferencesPage {
@@ -65,7 +70,7 @@ export default class QuickLauncherPreferences extends ExtensionPreferences {
         onePassword.add(unlock);
         page.add(onePassword);
 
-        const output = new Adw.PreferencesGroup({title: 'Copy & type'});
+        const output = new Adw.PreferencesGroup({title: 'Copy and type'});
         output.add(spinRow(settings, 'clear-clipboard-seconds', 'Clear clipboard after', 'Seconds, 0 = never', 3600, 5));
         output.add(switchRow(settings, 'scrub-clipboard-history', 'Remove secrets from Clipboard Indicator history'));
         output.add(spinRow(settings, 'type-delay-ms', 'Delay between typed keys', 'Milliseconds; raise this if characters get lost', 200, 1));
@@ -172,6 +177,122 @@ function clockifyPage(settings: Gio.Settings): Adw.PreferencesPage {
     page.add(api);
 
     return page;
+}
+
+function shortcutsPage(settings: Gio.Settings): Adw.PreferencesPage {
+    const page = new Adw.PreferencesPage({name: 'shortcuts', title: 'Shortcuts', icon_name: 'preferences-desktop-keyboard-shortcuts-symbolic'});
+
+    const global = new Adw.PreferencesGroup({
+        title: 'Anywhere',
+        description: 'These work everywhere in GNOME. Click a shortcut to change it.',
+    });
+    global.add(shortcutRow(settings, 'shortcut', 'Open launcher'));
+    global.add(shortcutRow(settings, 'clockify-shortcut', 'Open Clockify directly'));
+    page.add(global);
+
+    const groups = new Map<ShortcutGroup, Adw.PreferencesGroup>();
+    for (const shortcut of SHORTCUTS) {
+        let group = groups.get(shortcut.group);
+        if (!group) {
+            group = new Adw.PreferencesGroup({title: GROUPS[shortcut.group]});
+            groups.set(shortcut.group, group);
+            page.add(group);
+        }
+        group.add(launcherShortcutRow(settings, shortcut.id, shortcut.title));
+    }
+
+    const reset = new Gtk.Button({label: 'Reset All', valign: Gtk.Align.CENTER, css_classes: ['flat']});
+    reset.connect('clicked', () => settings.reset('launcher-shortcuts'));
+    groups.get('launcher')!.header_suffix = reset;
+    groups.get('launcher')!.description = 'Inside the launcher. Each action lists its keys in the action panel.';
+    return page;
+}
+
+function overrides(settings: Gio.Settings): Overrides {
+    return settings.get_value('launcher-shortcuts').deepUnpack() as Overrides;
+}
+
+function setOverride(settings: Gio.Settings, id: ShortcutId, keys: string[] | null) {
+    const all = overrides(settings);
+    const defaults = SHORTCUTS.find(s => s.id === id)!.defaults as readonly string[];
+    if (keys === null || (keys.length === defaults.length && keys.every((k, i) => k === defaults[i])))
+        delete all[id];
+    else
+        all[id] = keys;
+    settings.set_value('launcher-shortcuts', new GLib.Variant('a{sas}', all as Record<string, string[]>));
+}
+
+/** A shortcut inside the launcher: click to record, the arrow resets it. Warns about clashes. */
+function launcherShortcutRow(settings: Gio.Settings, id: ShortcutId, title: string): Adw.ActionRow {
+    const row = new Adw.ActionRow({title, activatable: true});
+    const label = new Gtk.ShortcutLabel({disabled_text: 'Off', valign: Gtk.Align.CENTER});
+    const reset = new Gtk.Button({
+        icon_name: 'edit-undo-symbolic',
+        tooltip_text: 'Reset to default',
+        valign: Gtk.Align.CENTER,
+        css_classes: ['flat'],
+    });
+    reset.connect('clicked', () => setOverride(settings, id, null));
+    row.add_suffix(label);
+    row.add_suffix(reset);
+
+    const sync = () => {
+        const all = overrides(settings);
+        label.accelerator = accelerators(id, all).join(' ');
+        reset.visible = all[id] !== undefined;
+        const clashes = conflicts(id, all).map(other => SHORTCUTS.find(s => s.id === other)!.title);
+        row.subtitle = clashes.length ? `Same keys as: ${clashes.join(', ')}` : '';
+        if (clashes.length)
+            row.add_css_class('warning');
+        else
+            row.remove_css_class('warning');
+    };
+    sync();
+    const changed = settings.connect('changed::launcher-shortcuts', sync);
+    row.connect('destroy', () => settings.disconnect(changed));
+
+    row.connect('activated', () => {
+        const dialog = new Adw.AlertDialog({
+            heading: title,
+            body: 'Press the new keys, or Esc to cancel. Keys that type text need Ctrl, Alt or Super.',
+        });
+        dialog.add_response('cancel', 'Cancel');
+        dialog.add_response('off', 'Turn Off');
+        dialog.set_response_appearance('off', Adw.ResponseAppearance.DESTRUCTIVE);
+        const add = new Gtk.CheckButton({label: 'Keep the current keys too', halign: Gtk.Align.CENTER});
+        dialog.extra_child = add;
+        dialog.connect('response', (_dialog, response: string) => {
+            if (response === 'off')
+                setOverride(settings, id, []);
+        });
+
+        // In the capture phase, so Enter and Tab can be recorded too. Esc cancels; Reset brings it back for "Go back".
+        const controller = new Gtk.EventControllerKey({propagation_phase: Gtk.PropagationPhase.CAPTURE});
+        controller.connect('key-pressed', (_controller, keyval: number, keycode: number, state: Gdk.ModifierType) => {
+            const mods = state & Gtk.accelerator_get_default_mod_mask();
+            if (!mods && keyval === Gdk.KEY_Escape) {
+                dialog.close();
+                return Gdk.EVENT_STOP;
+            }
+            if (!Gtk.accelerator_valid(keyval, mods))
+                return Gdk.EVENT_STOP;
+            const char = Gdk.keyval_to_unicode(keyval);
+            if (char >= 0x20 && char !== 0x7f && (mods & ~Gdk.ModifierType.SHIFT_MASK) === 0) {
+                dialog.body = 'Keys that type text need Ctrl, Alt or Super, or they would end up in the search.';
+                return Gdk.EVENT_STOP;
+            }
+            const accelerator = Gtk.accelerator_name_with_keycode(null, keyval, keycode, mods);
+            const current = accelerators(id, overrides(settings));
+            setOverride(settings, id, add.active
+                ? [...current.filter(k => k !== accelerator), accelerator]
+                : [accelerator]);
+            dialog.close();
+            return Gdk.EVENT_STOP;
+        });
+        dialog.add_controller(controller);
+        dialog.present(row);
+    });
+    return row;
 }
 
 function switchRow(settings: Gio.Settings, key: string, title: string): Adw.SwitchRow {

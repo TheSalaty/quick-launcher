@@ -18,6 +18,7 @@ src/root.ts             the start view: recent items, commands, and the combined
 src/prefs.ts            Adwaita preferences, shortcut recorder, pinentry bridge installer
 src/lib/launcher.ts     the popup: view stack, sections, pooled rows, footer, action panel, password prompt
 src/lib/search.ts       Bitwarden-style token search (no GI imports, unit tested)
+src/lib/shortcuts.ts    every in-launcher shortcut with its defaults, accelerator parsing (unit tested)
 src/lib/output.ts       secret clipboard, virtual keyboard, timers
 src/lib/subprocess.ts   Gio.Subprocess wrapper; secrets go over stdin, never argv
 src/calc/               calculator: units, math, dates and time zones (pure, unit tested), ECB rates
@@ -43,6 +44,14 @@ unit tests from the sources directly.
 The first action runs on Enter and is named in the footer, the others have optional shortcuts and
 are all listed in the action panel (Ctrl+K). Views can add actions that apply to every item, such
 as *Sync Vaults* on Ctrl+R.
+
+An action names its shortcut by id (`shortcut: 'copy-username'`), never by keys. The ids and their
+default GTK accelerators are listed in `SHORTCUTS` in `src/lib/shortcuts.ts`, and so are the
+launcher's own keys (Enter, Ctrl+K, moving the selection, Esc). The settings key
+`launcher-shortcuts` (`a{sas}`) only stores what the user changed; an empty list turns a shortcut
+off. The launcher reads it live, matches key presses against it and shows the current keys in the
+footer and the action panel. The preferences build the *Shortcuts* page from the same list, so a
+new action shortcut only needs an entry there.
 
 Each feature is a provider with its own view (Passwords, Clockify, Emoji) plus a few methods
 the start view uses: `search(query, limit)` for the combined results, `commands()`, and

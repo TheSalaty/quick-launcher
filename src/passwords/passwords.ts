@@ -244,8 +244,8 @@ export class Passwords {
 
     #viewActions(): Action[] {
         return [
-            {title: 'Sync Vaults', icon: 'view-refresh-symbolic', shortcut: {key: 'r', ctrl: true}, run: () => void this.#sync()},
-            {title: 'Lock Vaults', icon: 'system-lock-screen-symbolic', shortcut: {key: 'l', ctrl: true}, run: () => void this.#lockAll()},
+            {title: 'Sync Vaults', icon: 'view-refresh-symbolic', shortcut: 'sync-vaults', run: () => void this.#sync()},
+            {title: 'Lock Vaults', icon: 'system-lock-screen-symbolic', shortcut: 'lock-vaults', run: () => void this.#lockAll()},
         ];
     }
 
@@ -258,29 +258,30 @@ export class Passwords {
             subtitle: [item.user, item.location].filter(Boolean).join('  ·  '),
             source: {icon: this.#logos.get(item.vault)!, styleClass: item.vault.logoClass},
             actions: [
-                {title: 'Copy Password', icon: 'edit-copy-symbolic', shortcut: {key: 'c', ctrl: true, shift: true}, run: run('copy', 'password')},
-                {title: 'Copy Username', icon: 'avatar-default-symbolic', shortcut: {key: 'c', ctrl: true}, run: run('copy', 'user')},
-                {title: 'Type Password', icon: 'input-keyboard-symbolic', shortcut: {key: 'return', shift: true}, run: run('type', 'password')},
-                {title: 'Type Username and Password', icon: 'input-keyboard-symbolic', shortcut: {key: 'return', ctrl: true}, run: run('type', 'login')},
-                {title: 'Copy TOTP Code', icon: 'preferences-system-time-symbolic', shortcut: {key: 't', alt: true}, run: run('copy', 'totp')},
-                {title: 'Type Username', icon: 'input-keyboard-symbolic', shortcut: {key: 'u', alt: true, shift: true}, run: run('type', 'user')},
-                {title: 'Type TOTP Code', icon: 'input-keyboard-symbolic', shortcut: {key: 't', alt: true, shift: true}, run: run('type', 'totp')},
+                {title: 'Copy Password', icon: 'edit-copy-symbolic', shortcut: 'copy-password', run: run('copy', 'password')},
+                {title: 'Copy Username', icon: 'avatar-default-symbolic', shortcut: 'copy-username', run: run('copy', 'user')},
+                {title: 'Type Password', icon: 'input-keyboard-symbolic', shortcut: 'type-password', run: run('type', 'password')},
+                {title: 'Type Username and Password', icon: 'input-keyboard-symbolic', shortcut: 'type-login', run: run('type', 'login')},
+                {title: 'Copy TOTP Code', icon: 'preferences-system-time-symbolic', shortcut: 'copy-totp', run: run('copy', 'totp')},
+                {title: 'Type Username', icon: 'input-keyboard-symbolic', shortcut: 'type-username', run: run('type', 'user')},
+                {title: 'Type TOTP Code', icon: 'input-keyboard-symbolic', shortcut: 'type-totp', run: run('type', 'totp')},
             ],
         };
     }
 
     #vaultRow(vault: Vault): Item {
         const {status, error} = this.#state(vault);
+        const actions: Action[] = [
+            {title: status === 'error' ? 'Retry' : 'Unlock', icon: 'system-lock-screen-symbolic', run: () => void this.#unlock(vault)},
+            ...vault.askServer ? [{
+                title: 'Use Another Server…', icon: 'network-server-symbolic', shortcut: 'vault-server',
+                run: () => void this.changeServer(vault),
+            } satisfies Action] : [],
+        ];
         const base = {
             id: `vault:${vault.id}`,
             source: {icon: this.#logos.get(vault)!, styleClass: vault.logoClass},
-            actions: [
-                {title: status === 'error' ? 'Retry' : 'Unlock', icon: 'system-lock-screen-symbolic', run: () => void this.#unlock(vault)},
-                ...vault.askServer ? [{
-                    title: 'Use Another Server…', icon: 'network-server-symbolic', shortcut: {key: 's', ctrl: true},
-                    run: () => void this.changeServer(vault),
-                }] : [],
-            ],
+            actions,
         };
         switch (status) {
         case 'unlocking':

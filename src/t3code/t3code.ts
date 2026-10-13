@@ -142,7 +142,7 @@ export class T3Code {
             actions: [
                 {title: 'Open in T3 Code', icon: 'go-next-symbolic', run: () => this.#open(session)},
                 {
-                    title: 'Copy Link', icon: 'edit-copy-symbolic', shortcut: {key: 'c', ctrl: true, shift: true},
+                    title: 'Copy Link', icon: 'edit-copy-symbolic', shortcut: 'copy-link',
                     run: () => {
                         this.#launcher.close();
                         St.Clipboard.get_default().set_text(St.ClipboardType.CLIPBOARD, this.#link(session));

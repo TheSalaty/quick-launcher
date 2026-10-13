@@ -8,7 +8,7 @@ import * as MessageTray from 'resource:///org/gnome/shell/ui/messageTray.js';
 import {ExchangeRates} from './calc/rates.ts';
 import {Clockify} from './clockify/clockify.ts';
 import {Emoji} from './emoji/emoji.ts';
-import {shortcutText} from './lib/accelerator.ts';
+import {shortcutText} from './lib/shortcuts.ts';
 import {Launcher} from './lib/launcher.ts';
 import {Timers} from './lib/output.ts';
 import {Recents} from './lib/recents.ts';
@@ -29,7 +29,7 @@ export default class QuickLauncherExtension extends Extension {
 
     override enable() {
         const settings = this.getSettings();
-        const launcher = new Launcher();
+        const launcher = new Launcher(settings);
         const recents = new Recents(settings);
         this.#timers = new Timers();
         this.#launcher = launcher;
