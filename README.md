@@ -223,7 +223,11 @@ Matching recent entries show up in the search, with when you last worked on them
 command while a timer runs, with how long it runs. Starting a timer stops the running one at the same second, so there are no gaps.
 
 While a timer runs, the top bar shows it and how long it runs, also for timers started in Clockify
-itself; its menu stops the timer. Until Clockify is connected, *Connect Clockify* is a command.
+itself (checked every 4–5 minutes); its menu stops the timer. Until Clockify is connected, *Connect Clockify* is a command.
+
+Clockify's Free plan allows only 30 requests per hour, so the launcher refetches recent entries at most every 15 minutes
+(*Reload* forces it) and projects and tags hourly. When the limit is hit anyway, the top bar dims and shows the last
+known timer, and automatic requests pause for 15 minutes.
 
 <p align="center">
   <img src="docs/clockify.png" alt="A recent Clockify entry found by typing standup" width="600">

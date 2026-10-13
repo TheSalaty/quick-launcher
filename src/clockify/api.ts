@@ -13,6 +13,14 @@ export class ClockifyError extends Error {
     }
 }
 
+/** HTTP 429: the Free plan allows only 30 workspace requests per hour. */
+export class RateLimitError extends ClockifyError {
+    constructor() {
+        super('Clockify request limit reached (Free plan: 30 per hour), showing the last known state');
+        this.name = 'RateLimitError';
+    }
+}
+
 interface Me {
     id: string;
     workspace: string;
@@ -75,7 +83,10 @@ export class ClockifyApi {
 
         const bytes = await this.#session.send_and_read_async(message, GLib.PRIORITY_DEFAULT, this.#cancellable);
         const text = new TextDecoder().decode(bytes.toArray());
-        const status = message.get_status();
+        // get_status() throws for codes missing from Soup.Status, like 429.
+        const status = message.status_code;
+        if (status === 429)
+            throw new RateLimitError();
         if (status < 200 || status >= 300) {
             // Clockify answers with JSON {message}; proxies and wrong URLs with HTML.
             let detail = message.get_reason_phrase() ?? '';
@@ -114,6 +125,13 @@ export class ClockifyApi {
 
     async recent(): Promise<TimeEntry[]> {
         return this.#request('GET', await this.#entriesPath(), {query: {'hydrated': true, 'page-size': 200}});
+    }
+
+    /** The running time entry, or null */
+    async running(): Promise<TimeEntry | null> {
+        const entries = await this.#request<TimeEntry[]>('GET', await this.#entriesPath(),
+            {query: {'in-progress': true, 'hydrated': true}});
+        return entries?.[0] ?? null;
     }
 
     async projects(): Promise<Project[]> {
