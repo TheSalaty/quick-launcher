@@ -37,6 +37,12 @@ export interface NewEntry {
     billable: boolean;
 }
 
+/**
+ * When the last workspace requests were sent; those count towards Clockify's limit, /user doesn't.
+ * Module-level, so it survives the extension being disabled and enabled again on screen lock.
+ */
+const sent: number[] = [];
+
 function now(): string {
     return new Date().toISOString().replace(/\.\d+Z$/, 'Z');
 }
@@ -60,6 +66,14 @@ export class ClockifyApi {
         return `${this.#settings.get_string('clockify-api-url')}|${this.#settings.get_string('clockify-api-key')}`;
     }
 
+    /** Workspace requests sent within the last hour */
+    get sentLastHour(): number {
+        const hourAgo = Date.now() - 3_600_000;
+        while (sent.length && sent[0] < hourAgo)
+            sent.shift();
+        return sent.length;
+    }
+
     /** Identifies the account, so a cache never shows another account's data. */
     get account(): string {
         return GLib.compute_checksum_for_string(GLib.ChecksumType.SHA256, this.#credentials, -1) ?? '';
@@ -77,6 +91,8 @@ export class ClockifyApi {
         const message = Soup.Message.new(method, `${base}${path}${params ? `?${params}` : ''}`);
         if (!message)
             throw new ClockifyError(`Invalid API URL: ${base}`);
+        if (path.startsWith('/workspaces/'))
+            sent.push(Date.now());
 
         message.request_headers.append('X-Api-Key', key ?? this.#settings.get_string('clockify-api-key'));
         if (body !== undefined) {

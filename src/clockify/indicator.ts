@@ -10,7 +10,9 @@ import {RUNNING_MAX_AGE, type Clockify} from './clockify.ts';
 import {duration} from './tasks.ts';
 
 /** How often the running timer is fetched, to notice timers started elsewhere; one request each */
-const POLL_SECONDS = RUNNING_MAX_AGE / 1000 + 30;
+const POLL_SECONDS = RUNNING_MAX_AGE / 1000 + 15;
+/** Nobody looks at the top bar after this long without input, so polling pauses */
+const IDLE_MS = 10 * 60_000;
 const MAX_TITLE = 32;
 
 /** The running Clockify timer in the top bar: what it is and how long it runs. */
@@ -22,6 +24,7 @@ export class ClockifyIndicator {
     readonly #stale: PopupMenu.PopupMenuItem;
     readonly #unsubscribe: () => void;
     readonly #sources: number[];
+    #activeWatch = 0;
 
     constructor(clockify: Clockify, open: () => void) {
         this.#clockify = clockify;
@@ -51,7 +54,14 @@ export class ClockifyIndicator {
                 return GLib.SOURCE_CONTINUE;
             }),
             GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, POLL_SECONDS, () => {
-                void clockify.refreshRunning();
+                if (this.#idle.get_idletime() < IDLE_MS)
+                    void clockify.refreshRunning();
+                else if (!this.#activeWatch)
+                    this.#activeWatch = this.#idle.add_user_active_watch(() => {
+                        // Back at the computer: catch up right away.
+                        this.#activeWatch = 0;
+                        void clockify.refreshRunning();
+                    });
                 return GLib.SOURCE_CONTINUE;
             }),
         ];
@@ -77,8 +87,14 @@ export class ClockifyIndicator {
         this.#stale.label.text = stale ?? '';
     }
 
+    get #idle() {
+        return global.backend.get_core_idle_monitor();
+    }
+
     destroy() {
         this.#sources.forEach(id => GLib.source_remove(id));
+        if (this.#activeWatch)
+            this.#idle.remove_watch(this.#activeWatch);
         this.#unsubscribe();
         this.#button.destroy();
     }

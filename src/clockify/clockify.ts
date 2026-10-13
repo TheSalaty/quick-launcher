@@ -19,10 +19,12 @@ const RECENT_PREFIX = 'clockify:';
 const MINUTE = 60_000;
 /** Recent entries are refetched when the launcher opens, at most this often */
 const ENTRIES_MAX_AGE = 15 * MINUTE;
-/** Projects and tags rarely change */
-const CATALOG_MAX_AGE = 60 * MINUTE;
+/** Projects and tags rarely change; Reload fetches them right away */
+const CATALOG_MAX_AGE = 6 * 60 * MINUTE;
 /** The running timer is checked at most this often */
-export const RUNNING_MAX_AGE = 4 * MINUTE;
+export const RUNNING_MAX_AGE = 5 * MINUTE;
+/** Automatic requests stop at this many per hour, leaving the rest for starting and stopping timers */
+const BACKGROUND_BUDGET = 20;
 /** No automatic requests for this long after hitting the limit */
 const RATE_LIMIT_PAUSE = 15 * MINUTE;
 
@@ -31,6 +33,11 @@ interface CacheData {
     tasks: Task[];
     projects: Project[];
     tags: Tag[];
+    /** When each part was fetched, so a restart or screen unlock doesn't refetch it */
+    entriesAt?: number;
+    catalogAt?: number;
+    runningAt?: number;
+    running?: Task | null;
 }
 
 function searchFields(task: Task): Field[] {
@@ -136,8 +143,9 @@ export class Clockify {
         return this.#error;
     }
 
+    /** Whether automatic requests have to wait */
     get #limited(): boolean {
-        return Date.now() < this.#blockedUntil;
+        return Date.now() < this.#blockedUntil || this.#api.sentLastHour >= BACKGROUND_BUDGET;
     }
 
     /** Saves an API key once Clockify accepts it; resolves the account's name. */
@@ -340,6 +348,22 @@ export class Clockify {
         this.#runningAt = Date.now();
         this.#error = null;
         this.#changed();
+        this.#save();
+    }
+
+    #save() {
+        if (!this.#account)
+            return;
+        this.#cache.save({
+            account: this.#account,
+            tasks: [...this.#index.items],
+            projects: this.#projects,
+            tags: this.#tags,
+            entriesAt: this.#entriesAt,
+            catalogAt: this.#catalogAt,
+            runningAt: this.#runningAt,
+            running: this.#running,
+        }).catch(e => console.error('quick-launcher: Could not write Clockify cache', e));
     }
 
     #loadCache() {
@@ -347,9 +371,12 @@ export class Clockify {
         if (this.#account === account)
             return;
         this.#account = account;
-        const {tasks = [], projects = [], tags = []} = this.#cache.load(account) ?? {};
-        this.#running = undefined;
-        this.#entriesAt = this.#catalogAt = this.#runningAt = 0;
+        const {tasks = [], projects = [], tags = [], entriesAt = 0, catalogAt = 0, runningAt = 0, running} =
+            this.#cache.load(account) ?? {};
+        this.#running = running;
+        this.#entriesAt = entriesAt;
+        this.#catalogAt = catalogAt;
+        this.#runningAt = runningAt;
         this.#setData(tasks, projects, tags);
     }
 
@@ -364,7 +391,7 @@ export class Clockify {
         this.#loading = true;
         try {
             const account = this.#api.account;
-            const catalog = force || !this.#projects.length || Date.now() - this.#catalogAt >= CATALOG_MAX_AGE;
+            const catalog = force || Date.now() - this.#catalogAt >= CATALOG_MAX_AGE;
             const [entries, allProjects, allTags] = await Promise.all([
                 this.#api.recent(),
                 catalog ? this.#api.projects() : this.#projects,
@@ -389,8 +416,7 @@ export class Clockify {
             if (this.#launcher.view === this.view)
                 this.#launcher.setStatus(null);
 
-            this.#cache.save({account, tasks, projects, tags}).catch(e =>
-                console.error('quick-launcher: Could not write Clockify cache', e));
+            this.#save();
         } catch (e) {
             this.#failed(e);
         } finally {
